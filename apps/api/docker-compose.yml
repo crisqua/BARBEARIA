@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: barberaria-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: barberaria
+      POSTGRES_PASSWORD: barberaria
+      POSTGRES_DB: barberaria
+    ports:
+      # Host 55432 -> container 5432: as portas 5432/5433 já estão em uso por
+      # instalações locais do Postgres (17/18) nesta máquina.
+      - "55432:5432"
+    volumes:
+      - barberaria-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barberaria -d barberaria"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  barberaria-postgres-data:

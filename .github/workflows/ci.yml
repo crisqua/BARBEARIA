@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: barberaria
+          POSTGRES_PASSWORD: barberaria
+          POSTGRES_DB: barberaria
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U barberaria -d barberaria"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Bootstrap superuser do container — só para migrations e criação da role restrita.
+      DIRECT_URL: postgresql://barberaria:barberaria@localhost:5432/barberaria?schema=public
+      # Role restrita (NOSUPERUSER, NOBYPASSRLS) — usada pela app e pelos testes de
+      # isolamento, pra RLS ser de fato exercitado (ver apps/api/scripts/setup-app-role.ts).
+      DATABASE_URL: postgresql://barberaria_app:barberaria_app@localhost:5432/barberaria?schema=public
+
+    defaults:
+      run:
+        working-directory: apps/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Prisma generate
+        run: npm run prisma:generate
+
+      - name: Run migrations (schema + RLS + composite FKs)
+        run: npm run prisma:migrate:deploy
+
+      - name: Create restricted app role (NOSUPERUSER, NOBYPASSRLS)
+        run: npm run db:setup-role
+
+      - name: RLS gate — every tenant_id table must have RLS enabled and forced
+        working-directory: .
+        run: psql "$DIRECT_URL" --set ON_ERROR_STOP=1 -f scripts/check-rls.sql
+
+      - name: Run isolation tests (section 7)
+        run: npm run test:e2e

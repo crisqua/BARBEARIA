@@ -1,0 +1,4 @@
+# Este arquivo é usado para garantir que o histórico de migrations não seja
+# acidentalmente alterado para outro provider de banco.
+
+provider = "postgresql"
