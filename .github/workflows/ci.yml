@@ -27,10 +27,10 @@ jobs:
 
     env:
       # Bootstrap superuser do container — só para migrations e criação da role restrita.
-      DIRECT_URL: postgresql://barberaria:barberaria@localhost:5432/barberaria?schema=public
+      DIRECT_URL: postgresql://barberaria:barberaria@localhost:5432/barberaria
       # Role restrita (NOSUPERUSER, NOBYPASSRLS) — usada pela app e pelos testes de
       # isolamento, pra RLS ser de fato exercitado (ver apps/api/scripts/setup-app-role.ts).
-      DATABASE_URL: postgresql://barberaria_app:barberaria_app@localhost:5432/barberaria?schema=public
+      DATABASE_URL: postgresql://barberaria_app:barberaria_app@localhost:5432/barberaria
 
     defaults:
       run:
