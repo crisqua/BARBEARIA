@@ -31,6 +31,12 @@ jobs:
       # Role restrita (NOSUPERUSER, NOBYPASSRLS) — usada pela app e pelos testes de
       # isolamento, pra RLS ser de fato exercitado (ver apps/api/scripts/setup-app-role.ts).
       DATABASE_URL: postgresql://barberaria_app:barberaria_app@localhost:5432/barberaria
+      # Secrets só de CI (efêmeros, sem valor real) — localmente vêm do .env, que é
+      # gitignored e não existe no checkout do runner.
+      JWT_SECRET: ci-only-access-secret
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: ci-only-refresh-secret
+      JWT_REFRESH_EXPIRES_IN: 7d
 
     defaults:
       run:
