@@ -6,6 +6,11 @@ Este arquivo deve ficar salvo como `CLAUDE.md` na raiz do repositório. O Claude
 
 **Revisão (2026-08-08):** decisão de infraestrutura trocada de Terraform + AWS para **Supabase (Postgres gerenciado) + Render (backend) + Vercel (frontend)** — infra mais leve para a fase atual do MVP, sem provisionar conta AWS. Todo o resto do documento (schema, RLS, FKs compostas, mecanismo de tenant context da seção 6.3) permanece válido sem alteração — Supabase é Postgres puro, então nada no modelo de dados muda. Seção 2 e seção 9 já refletem essa troca.
 
+**Revisão (2026-08-10):** Sprints 1–6 concluídas (backend + dois frontends conectados, CI verde). Sprint 7 (piloto) em andamento em ambiente local — surgiu um ajuste real de escopo/schema e um bug de fuso corrigido, já implementados e refletidos nas seções 4 e 5.1:
+- Campo `active` em `users`, com fluxo de ativar/inativar profissional (ver seção 4).
+- Status `needs_reschedule` em `appointments`, gerado automaticamente quando um profissional com agendamentos futuros é inativado.
+- Bug real corrigido (não é decisão nova, é fix): o corte de "horário já passado" comparava `Date.now()` (UTC real do processo) contra `starts_at` (tratado como hora local da barbearia sem conversão, seção 4 "decisões adiadas"). Em fuso diferente de UTC isso escondia/liberava horários errados. Corrigido com um helper `nowInBarbershopTime()` que usa timezone fixo (`America/Sao_Paulo`) via `Intl`, tanto no backend (`common/time.util.ts`) quanto duplicado nos dois frontends — nenhuma mudança de escopo, só a comparação ficou consistente com o resto do sistema.
+
 ---
 
 ## 1. O que é o projeto
@@ -60,6 +65,7 @@ Antes de mexer no código desses arquivos, leia o conteúdo completo dos dois pa
 - Personalização visual: cor primária/secundária + logo (via `tenants` config)
 - Subdomínio automático por tenant (`slug.barberaria.app`)
 - Painel admin básico: visão de agendamentos do dia/semana
+- Ativar/inativar profissional (`users.active`): admin desativa via `PATCH /v1/professionals/:id`. Profissional inativo some do fluxo de agendamento do cliente (lookup serviço→profissional e navegação direta) e o backend rejeita criar agendamento ou consultar disponibilidade para ele, mesmo via API direta. Ao inativar, todo agendamento futuro com status `scheduled` desse profissional muda em lote para `needs_reschedule` (resposta do PATCH inclui `affectedAppointmentsCount` para o painel avisar o admin). Agendamento `needs_reschedule` só pode ser cancelado pelo cliente (não remarcado — remarcar mantém o mesmo profissional, que está inativo), forçando um novo agendamento com outro profissional.
 
 ### Fica fora do MVP (não implementar ainda, mesmo que exista tela no protótipo)
 - Assinaturas/planos recorrentes e billing
@@ -77,6 +83,7 @@ Se em algum momento parecer necessário implementar algo dessa segunda lista par
 
 - **Identidade global de usuário:** hoje `UNIQUE(tenant_id, email)` permite o mesmo e-mail em tenants diferentes, como identidades separadas. Uma evolução futura (`users` + `tenant_users`) permitiria um mesmo cliente logar em várias barbearias com uma identidade única. **Não implementar no MVP** — só revisitar se houver demanda real validada.
 - **Sobreposição de horário no anti-double-booking:** o índice atual (seção 5.3) impede apenas `starts_at` idêntico para o mesmo profissional, não sobreposição de intervalo (ex: 14:00–14:45 e 14:30–15:15 não são bloqueados entre si). Solução futura já mapeada (constraint de exclusão com `btree_gist`, seção 5.3). **Não implementar no MVP**, mas o frontend deve gerar a lista de horários disponíveis já considerando a duração do serviço anterior, para minimizar a chance prática de colisão.
+- **Timezone por tenant:** o schema não modela fuso horário — `starts_at`/`ends_at` (Timestamptz) e `working_hours.start_time`/`end_time` (Time) são tratados como a hora local da barbearia, sem conversão, sempre lidos/escritos via getters/`Date.UTC` em UTC (nunca o timezone do processo Node). Qualquer comparação com "agora" (ex: bloquear agendamento no passado) deve usar `nowInBarbershopTime()` (`common/time.util.ts` no backend, duplicado nos dois frontends), que fixa o timezone em `America/Sao_Paulo` via `Intl` — comparar direto com `Date.now()`/`new Date()` quebra em qualquer ambiente cujo relógio do processo não seja Brasília (ex: Render roda em UTC). **Não implementar timezone por tenant no MVP** — só revisitar se o mercado deixar de ser só Brasil.
 
 ---
 
@@ -112,6 +119,7 @@ CREATE TABLE users (
   email VARCHAR(255) NOT NULL,
   phone VARCHAR(20),
   password_hash TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT true, -- só relevante pra role=barbeiro; ver seção 4
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (tenant_id, email),
   UNIQUE (tenant_id, id), -- necessário para as FKs compostas abaixo
@@ -180,7 +188,7 @@ CREATE TABLE appointments (
   service_id UUID NOT NULL,
   starts_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ NOT NULL,
-  status VARCHAR(20) NOT NULL DEFAULT 'scheduled', -- scheduled | cancelled | completed
+  status VARCHAR(20) NOT NULL DEFAULT 'scheduled', -- scheduled | cancelled | completed | needs_reschedule (ver seção 4)
   created_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT fk_appt_client_tenant FOREIGN KEY (tenant_id, client_id)
     REFERENCES users (tenant_id, id),
