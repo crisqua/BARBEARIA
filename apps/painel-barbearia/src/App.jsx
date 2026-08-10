@@ -8,6 +8,7 @@ import {
   getAccessToken,
   getMe,
   getMyTenant,
+  getUser,
   listAppointments,
   listProfessionalServices,
   listProfessionals,
@@ -117,8 +118,13 @@ const dateKey = (d) => d.toISOString().slice(0, 10);
 const formatSlotTime = (iso) =>
   new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 
-const STATUS_LABEL = { scheduled: "agendado", completed: "concluído", cancelled: "cancelado" };
-const STATUS_COLOR = { scheduled: T.gold, completed: T.success, cancelled: "#F25C5C" };
+const STATUS_LABEL = {
+  scheduled: "agendado",
+  completed: "concluído",
+  cancelled: "cancelado",
+  needs_reschedule: "reagendar cliente - prof inativo",
+};
+const STATUS_COLOR = { scheduled: T.gold, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
 
 // ─── LOGIN ─────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
@@ -237,6 +243,7 @@ function Dashboard() {
   const [appointments, setAppointments] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   const [services, setServices] = useState([]);
+  const [clients, setClients] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -252,13 +259,30 @@ function Dashboard() {
         setAppointments(apptRes.items);
         setProfessionals(profRes.items);
         setServices(svcRes.items);
+
+        const clientIds = [...new Set(apptRes.items.map((a) => a.clientId))];
+        Promise.all(clientIds.map((id) => getUser(id).catch(() => null))).then((users) => {
+          const map = {};
+          users.forEach((u, i) => { if (u) map[clientIds[i]] = u.name; });
+          setClients(map);
+        });
       })
       .finally(() => setLoading(false));
   }, []);
 
+  const [filterCliente, setFilterCliente] = useState("");
+  const [filterServico, setFilterServico] = useState("");
+  const [filterProfissional, setFilterProfissional] = useState("");
+  const hasFilter = filterCliente || filterServico || filterProfissional;
+
   const proName = (id) => professionals.find((p) => p.id === id)?.name || "—";
   const svcName = (id) => services.find((s) => s.id === id)?.name || "—";
-  const sorted = [...appointments].sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+  const clientName = (id) => clients[id] || "—";
+  const sorted = [...appointments]
+    .filter((a) => clientName(a.clientId).toLowerCase().includes(filterCliente.trim().toLowerCase()))
+    .filter((a) => svcName(a.serviceId).toLowerCase().includes(filterServico.trim().toLowerCase()))
+    .filter((a) => proName(a.professionalId).toLowerCase().includes(filterProfissional.trim().toLowerCase()))
+    .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
   const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
   return (
@@ -269,7 +293,7 @@ function Dashboard() {
       </div>
       <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
         <Stat label="Agendamentos hoje" value={String(appointments.length)} sub={`${appointments.filter((a) => a.status === "scheduled").length} agendados`} />
-        <Stat label="Profissionais ativos" value={String(professionals.length)} />
+        <Stat label="Profissionais ativos" value={String(professionals.filter((p) => p.active !== false).length)} />
       </div>
 
       <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
@@ -277,15 +301,44 @@ function Dashboard() {
           Agenda de Hoje
         </div>
         {loading && <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>}
-        {!loading && sorted.length === 0 && <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Nenhum agendamento hoje.</div>}
+        {!loading && appointments.length > 0 && (
+          <div style={{ padding: "10px 20px", display: "flex", alignItems: "center", gap: 14, borderBottom: `1px solid ${T.border}` }}>
+            <div style={{ width: 50, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Hora</div>
+            <input
+              value={filterCliente}
+              onChange={(e) => setFilterCliente(e.target.value)}
+              placeholder="Buscar cliente…"
+              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text }}
+            />
+            <input
+              value={filterServico}
+              onChange={(e) => setFilterServico(e.target.value)}
+              placeholder="Buscar serviço…"
+              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text }}
+            />
+            <input
+              value={filterProfissional}
+              onChange={(e) => setFilterProfissional(e.target.value)}
+              placeholder="Buscar profissional…"
+              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text }}
+            />
+            <div style={{ width: 90 }} />
+          </div>
+        )}
+        {!loading && sorted.length === 0 && (
+          <div style={{ padding: 20, fontSize: 12, color: T.muted }}>
+            {hasFilter ? "Nenhum agendamento encontrado para essa busca." : "Nenhum agendamento hoje."}
+          </div>
+        )}
         {sorted.map((a, i) => (
           <div key={a.id} style={{ padding: "14px 20px", borderBottom: i < sorted.length - 1 ? `1px solid ${T.bg}` : "none", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{svcName(a.serviceId)}</div>
-              <div style={{ fontSize: 11, color: T.muted }}>{proName(a.professionalId)}</div>
+            <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
+            <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
+            <div style={{ flex: 1, fontSize: 13, color: T.text }}>{proName(a.professionalId)}</div>
+            <div style={{ width: 90, textAlign: "right" }}>
+              <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
             </div>
-            <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
           </div>
         ))}
       </div>
@@ -298,6 +351,7 @@ function Agenda() {
   const [professionals, setProfessionals] = useState([]);
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [clients, setClients] = useState({});
   const [selectedDate, setSelectedDate] = useState(() => nextDays()[0]);
   const [loading, setLoading] = useState(true);
 
@@ -313,11 +367,20 @@ function Agenda() {
     const from = new Date(`${dateKey(selectedDate)}T00:00:00.000Z`);
     const to = new Date(from.getTime() + 24 * 60 * 60_000);
     listAppointments({ from: from.toISOString(), to: to.toISOString() })
-      .then((r) => setAppointments(r.items))
+      .then((r) => {
+        setAppointments(r.items);
+        const clientIds = [...new Set(r.items.map((a) => a.clientId))];
+        Promise.all(clientIds.map((id) => getUser(id).catch(() => null))).then((users) => {
+          const map = {};
+          users.forEach((u, i) => { if (u) map[clientIds[i]] = u.name; });
+          setClients(map);
+        });
+      })
       .finally(() => setLoading(false));
   }, [selectedDate]);
 
   const svcName = (id) => services.find((s) => s.id === id)?.name || "—";
+  const clientName = (id) => clients[id] || "—";
   const days = nextDays(14);
 
   return (
@@ -366,7 +429,8 @@ function Agenda() {
                       <span style={{ fontSize: 12, color: T.gold, fontWeight: 700 }}>{formatSlotTime(a.startsAt)}</span>
                       <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
                     </div>
-                    <div style={{ fontSize: 12, color: T.text, marginTop: 2 }}>{svcName(a.serviceId)}</div>
+                    <div style={{ fontSize: 13, color: T.text, fontWeight: 700, marginTop: 4 }}>{clientName(a.clientId)}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{svcName(a.serviceId)}</div>
                   </div>
                 ))}
               </div>
@@ -782,6 +846,15 @@ function Profissionais() {
   const startNew = () => { setForm({ name: "", email: "", phone: "", password: "" }); setError(""); setEditing("new"); };
   const startEdit = (p) => { setForm({ name: p.name, email: p.email, phone: p.phone || "", password: "" }); setError(""); setEditing(p.id); };
 
+  const toggleAtivo = async (p) => {
+    const wasActive = p.active;
+    const res = await updateProfessional(p.id, { active: !p.active });
+    await load();
+    if (wasActive && res.affectedAppointmentsCount > 0) {
+      window.alert(`VER PAINEL AGENDAMENTO. HÁ AGENDAMENTOS (${res.affectedAppointmentsCount}) que precisam ser reagendados com outro profissional.`);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     setError("");
@@ -805,7 +878,7 @@ function Profissionais() {
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Profissionais</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{profissionais.length} profissionais cadastrados</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{profissionais.length} profissionais cadastrados · {profissionais.filter((p) => p.active !== false).length} ativos</div>
         </div>
         <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Novo profissional</div>
       </div>
@@ -852,13 +925,14 @@ function Profissionais() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {profissionais.map((p) => (
-            <div key={p.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
+            <div key={p.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", opacity: p.active === false ? 0.6 : 1 }}>
               <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
                 <Avatar name={p.name} size={40} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
                   <div style={{ fontSize: 11, color: T.muted }}>{p.email}{p.phone ? ` · ${p.phone}` : ""}</div>
                 </div>
+                <ToggleSwitch on={p.active !== false} onClick={() => toggleAtivo(p)} />
                 <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
                 <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>
                   {expanded === p.id ? "Fechar ▲" : "Detalhes ▼"}

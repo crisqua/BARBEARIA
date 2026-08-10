@@ -45,6 +45,7 @@ model User {
   email        String   @db.VarChar(255)
   phone        String?  @db.VarChar(20)
   passwordHash String   @map("password_hash")
+  active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant Tenant? @relation(fields: [tenantId], references: [id])

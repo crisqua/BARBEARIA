@@ -490,14 +490,16 @@ export default function App() {
   );
 
   // ── PROFISSIONAIS (lista geral) ──
-  if (screen === "profissionais") return (
+  if (screen === "profissionais") {
+    const activeProfessionals = allProfessionals.filter((p) => p.active !== false);
+    return (
     <Phone T={T}>
       <div style={{ padding: "16px 24px 32px" }}>
         <BackHeader T={T} title="Nossos Profissionais" onBack={() => setScreen("home")} />
-        {allProfessionals.length === 0 && (
+        {activeProfessionals.length === 0 && (
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum profissional cadastrado ainda.</div>
         )}
-        {allProfessionals.map((p) => (
+        {activeProfessionals.map((p) => (
           <div key={p.id} style={{
             background: T.card, border: `1.5px solid ${T.border}`,
             borderRadius: 12, padding: 16, marginBottom: 10,
@@ -515,13 +517,16 @@ export default function App() {
         ))}
       </div>
     </Phone>
-  );
+    );
+  }
 
   // ── MEUS AGENDAMENTOS ──
   if (screen === "meus-agendamentos") {
     const now = nowInBarbershopTime();
+    const isActive = (a) =>
+      a.status === "needs_reschedule" || (a.status === "scheduled" && new Date(a.startsAt).getTime() >= now);
     const upcoming = appointments
-      .filter((a) => a.status === "scheduled" && new Date(a.startsAt).getTime() >= now)
+      .filter(isActive)
       .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
 
     const label = (a) => {
@@ -541,26 +546,37 @@ export default function App() {
           </div>
 
           {upcoming.length > 0 ? (
-            upcoming.map((a) => (
-              <div key={a.id} style={{ background: T.gold + "12", border: `1.5px solid ${T.gold}66`, borderRadius: 12, padding: 16, marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{label(a).servico}</div>
-                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>com {label(a).profissional}</div>
+            upcoming.map((a) => {
+              const needsReschedule = a.status === "needs_reschedule";
+              const accent = needsReschedule ? "#F5A623" : T.gold;
+              return (
+                <div key={a.id} style={{ background: accent + "12", border: `1.5px solid ${accent}66`, borderRadius: 12, padding: 16, marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{label(a).servico}</div>
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>com {label(a).profissional}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: accent }}>{label(a).preco}</div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: T.gold }}>{label(a).preco}</div>
+                  {needsReschedule && (
+                    <div style={{ fontSize: 11, color: accent, fontWeight: 700, marginBottom: 10 }}>
+                      Profissional não está mais disponível — cancele e agende com outro profissional.
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${accent}33` }}>
+                    <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>
+                      {formatSlotDate(a.startsAt)} · {formatSlotTime(a.startsAt)}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div onClick={() => handleCancel(a.id)} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Cancelar</div>
+                      {!needsReschedule && (
+                        <div onClick={() => startReschedule(a)} style={{ fontSize: 11, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Remarcar</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${T.gold}33` }}>
-                  <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>
-                    {formatSlotDate(a.startsAt)} · {formatSlotTime(a.startsAt)}
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div onClick={() => handleCancel(a.id)} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Cancelar</div>
-                    <div onClick={() => startReschedule(a)} style={{ fontSize: 11, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Remarcar</div>
-                  </div>
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px" }}>Nenhum agendamento futuro.</div>
           )}
@@ -573,7 +589,7 @@ export default function App() {
   if (screen === "meus-historicos") {
     const now = nowInBarbershopTime();
     const historico = appointments
-      .filter((a) => !(a.status === "scheduled" && new Date(a.startsAt).getTime() >= now))
+      .filter((a) => !(a.status === "needs_reschedule" || (a.status === "scheduled" && new Date(a.startsAt).getTime() >= now)))
       .sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt));
 
     const label = (a) => {

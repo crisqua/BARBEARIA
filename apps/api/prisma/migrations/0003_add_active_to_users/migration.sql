@@ -1,0 +1,13 @@
+-- Adiciona status ativo/inativo ao profissional (users.role = 'barbeiro').
+--
+-- Sem isso, um profissional que sai da barbearia não podia ser removido da lista
+-- de "escolher profissional" do app do cliente sem violar as FKs compostas
+-- (professional_services, working_hours, appointments) — e mesmo que pudesse,
+-- não havia como impedir novos agendamentos com ele sem apagar o cadastro.
+--
+-- Aplica-se à tabela `users` inteira (não só barbeiro) por simplicidade — mesmo
+-- padrão de outras colunas dessa tabela que só fazem sentido para um subconjunto
+-- de papéis (ex: tenant_id só é NULL para super_admin). Nenhuma policy de RLS
+-- muda: a tabela já tem RLS habilitado (migration 0001), e este ALTER só adiciona
+-- coluna, não afeta a policy existente.
+ALTER TABLE "users" ADD COLUMN "active" BOOLEAN NOT NULL DEFAULT true;

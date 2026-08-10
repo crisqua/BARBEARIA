@@ -22,7 +22,7 @@ export class ServicesProfessionalsController {
     if (links.length === 0) return [];
 
     return tx.user.findMany({
-      where: { id: { in: links.map((link) => link.professionalId) }, role: 'barbeiro' },
+      where: { id: { in: links.map((link) => link.professionalId) }, role: 'barbeiro', active: true },
       select: { id: true, name: true, email: true, phone: true },
     });
   }

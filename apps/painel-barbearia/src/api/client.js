@@ -54,7 +54,8 @@ export async function apiFetch(path, { method = "GET", body, skipAuthRetry = fal
   const data = contentType.includes("application/json") ? await res.json() : null;
 
   if (!res.ok) {
-    const error = new Error(data?.message?.[0] ?? data?.message ?? `Erro ${res.status}`);
+    const message = Array.isArray(data?.message) ? data.message[0] : data?.message;
+    const error = new Error(message ?? `Erro ${res.status}`);
     error.status = res.status;
     error.body = data;
     throw error;
@@ -71,6 +72,8 @@ export const login = (email, password) =>
 export const logout = () => apiFetch("/v1/auth/logout", { method: "POST" });
 
 export const getMe = () => apiFetch("/v1/users/me");
+
+export const getUser = (id) => apiFetch(`/v1/users/${id}`);
 
 // ─── Tenant (branding) ─────────────────────────────────
 export const getMyTenant = () => apiFetch("/v1/tenants/me");

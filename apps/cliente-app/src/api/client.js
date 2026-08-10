@@ -64,7 +64,8 @@ export async function apiFetch(path, { method = "GET", body, skipAuthRetry = fal
   const data = contentType.includes("application/json") ? await res.json() : null;
 
   if (!res.ok) {
-    const error = new Error(data?.message?.[0] ?? data?.message ?? `Erro ${res.status}`);
+    const message = Array.isArray(data?.message) ? data.message[0] : data?.message;
+    const error = new Error(message ?? `Erro ${res.status}`);
     error.status = res.status;
     error.body = data;
     throw error;

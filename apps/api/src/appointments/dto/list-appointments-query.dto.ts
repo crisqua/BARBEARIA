@@ -7,7 +7,7 @@ export class ListAppointmentsQueryDto extends PaginationQueryDto {
   professionalId?: string;
 
   @IsOptional()
-  @IsIn(['scheduled', 'cancelled', 'completed'])
+  @IsIn(['scheduled', 'cancelled', 'completed', 'needs_reschedule'])
   status?: string;
 
   @IsOptional()

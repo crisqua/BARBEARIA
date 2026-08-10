@@ -19,6 +19,7 @@ export class AvailabilityService {
   ): Promise<AvailabilityResult> {
     const professional = await tx.user.findFirst({ where: { id: professionalId, role: 'barbeiro' } });
     if (!professional) throw new NotFoundException('Profissional não encontrado.');
+    if (!professional.active) throw new BadRequestException('Esse profissional não está mais disponível para agendamentos.');
 
     const service = await tx.service.findFirst({ where: { id: serviceId, active: true } });
     if (!service) throw new NotFoundException('Serviço não encontrado ou inativo.');

@@ -17,6 +17,7 @@ export class AppointmentsService {
       where: { id: dto.professionalId, role: 'barbeiro' },
     });
     if (!professional) throw new NotFoundException('Profissional não encontrado.');
+    if (!professional.active) throw new BadRequestException('Esse profissional não está mais disponível para agendamentos.');
 
     const link = await tx.professionalService.findUnique({
       where: { professionalId_serviceId: { professionalId: dto.professionalId, serviceId: dto.serviceId } },
@@ -90,8 +91,8 @@ export class AppointmentsService {
 
   async cancel(tx: TenantTx, id: string, requester: AuthenticatedUser) {
     const appointment = await this.loadOwned(tx, id, requester);
-    if (appointment.status !== 'scheduled') {
-      throw new BadRequestException('Só é possível cancelar agendamentos com status "scheduled".');
+    if (appointment.status !== 'scheduled' && appointment.status !== 'needs_reschedule') {
+      throw new BadRequestException('Só é possível cancelar agendamentos com status "scheduled" ou "needs_reschedule".');
     }
     return tx.appointment.update({ where: { id }, data: { status: 'cancelled' } });
   }

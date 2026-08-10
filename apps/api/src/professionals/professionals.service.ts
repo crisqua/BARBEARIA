@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { nowInBarbershopTime } from '../common/time.util';
 import { hashPassword } from '../common/password.util';
 import { TenantTx } from '../prisma/tenant-context.service';
 import { CreateProfessionalDto } from './dto/create-professional.dto';
@@ -11,6 +12,7 @@ const PUBLIC_SELECT = {
   name: true,
   email: true,
   phone: true,
+  active: true,
   createdAt: true,
 } as const;
 
@@ -58,8 +60,23 @@ export class ProfessionalsService {
   }
 
   async update(tx: TenantTx, id: string, dto: UpdateProfessionalDto) {
-    await this.findOne(tx, id);
-    return tx.user.update({ where: { id }, data: dto, select: PUBLIC_SELECT });
+    const before = await this.findOne(tx, id);
+    const professional = await tx.user.update({ where: { id }, data: dto, select: PUBLIC_SELECT });
+
+    let affectedAppointmentsCount = 0;
+    if (before.active && dto.active === false) {
+      const result = await tx.appointment.updateMany({
+        where: {
+          professionalId: id,
+          status: 'scheduled',
+          startsAt: { gte: nowInBarbershopTime() },
+        },
+        data: { status: 'needs_reschedule' },
+      });
+      affectedAppointmentsCount = result.count;
+    }
+
+    return { ...professional, affectedAppointmentsCount };
   }
 
   /** Usado por professional-services e working-hours antes de criar a associação —
