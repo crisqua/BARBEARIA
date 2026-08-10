@@ -38,11 +38,11 @@ const T = {
 };
 
 // ─── SHARED MICRO COMPONENTS ──────────────────────────────
-const Badge = ({ color, children }) => (
+const Badge = ({ color, children, small }) => (
   <span style={{
     background: color + "22", color, border: `1px solid ${color}44`,
-    borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 600,
-    letterSpacing: "0.04em", textTransform: "uppercase"
+    borderRadius: 4, padding: small ? "2px 6px" : "2px 8px", fontSize: small ? 9 : 11, fontWeight: 600,
+    letterSpacing: "0.02em", textTransform: "uppercase", display: "inline-block", lineHeight: 1.4
   }}>{children}</span>
 );
 
@@ -122,9 +122,9 @@ const STATUS_LABEL = {
   scheduled: "agendado",
   completed: "concluído",
   cancelled: "cancelado",
-  needs_reschedule: "reagendar cliente - prof inativo",
+  needs_reschedule: "reagendar - prof. inativo",
 };
-const STATUS_COLOR = { scheduled: T.gold, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
+const STATUS_COLOR = { scheduled: T.success, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
 
 // ─── LOGIN ─────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
@@ -337,7 +337,7 @@ function Dashboard() {
             <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
             <div style={{ flex: 1, fontSize: 13, color: T.text }}>{proName(a.professionalId)}</div>
             <div style={{ width: 90, textAlign: "right" }}>
-              <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
+              <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
             </div>
           </div>
         ))}
@@ -424,10 +424,10 @@ function Agenda() {
                 {loading && <div style={{ padding: 14, fontSize: 12, color: T.muted }}>Carregando…</div>}
                 {!loading && items.length === 0 && <div style={{ padding: 14, fontSize: 12, color: T.muted }}>Sem agendamentos.</div>}
                 {!loading && items.map((a, i) => (
-                  <div key={a.id} style={{ padding: "10px 16px", borderBottom: i < items.length - 1 ? `1px solid ${T.bg}` : "none" }}>
+                  <div key={a.id} style={{ padding: "10px 16px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontSize: 12, color: T.gold, fontWeight: 700 }}>{formatSlotTime(a.startsAt)}</span>
-                      <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
+                      <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
                     </div>
                     <div style={{ fontSize: 13, color: T.text, fontWeight: 700, marginTop: 4 }}>{clientName(a.clientId)}</div>
                     <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{svcName(a.serviceId)}</div>
@@ -783,6 +783,17 @@ function ProfissionalDetalhe({ professional, allServices }) {
     <div style={{ borderTop: `1px solid ${T.border}`, padding: 16, display: "flex", gap: 24, flexWrap: "wrap" }}>
       {error && <div style={{ width: "100%" }}><ErrorBox>{error}</ErrorBox></div>}
 
+      <div style={{ width: "100%", display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 4 }}>
+        <div>
+          <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
+          <div style={{ fontSize: 13, color: T.text, marginTop: 2 }}>{professional.email}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
+          <div style={{ fontSize: 13, color: T.text, marginTop: 2 }}>{professional.phone || "—"}</div>
+        </div>
+      </div>
+
       <div style={{ flex: 1, minWidth: 220 }}>
         <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Serviços que realiza</div>
         {allServices.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum serviço cadastrado ainda.</div>}
@@ -894,12 +905,15 @@ function Profissionais() {
               <FieldLabel>Nome</FieldLabel>
               <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={fieldStyle} />
             </div>
-            {editing === "new" && (
-              <div style={{ flex: 1, minWidth: 180 }}>
-                <FieldLabel>E-mail</FieldLabel>
-                <input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={fieldStyle} />
-              </div>
-            )}
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <FieldLabel>E-mail</FieldLabel>
+              <input
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                disabled={editing !== "new"}
+                style={{ ...fieldStyle, opacity: editing !== "new" ? 0.6 : 1, cursor: editing !== "new" ? "not-allowed" : "text" }}
+              />
+            </div>
             <div style={{ flex: 1, minWidth: 140 }}>
               <FieldLabel>Telefone</FieldLabel>
               <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={fieldStyle} />
