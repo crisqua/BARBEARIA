@@ -6,6 +6,8 @@ import { UsersModule } from './users/users.module';
 import { AdminModule } from './admin/admin.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { TenantsPublicModule } from './tenants-public/tenants-public.module';
+import { ServicesModule } from './services/services.module';
+import { ProfessionalsModule } from './professionals/professionals.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -17,6 +19,8 @@ import { HealthController } from './health/health.controller';
     AdminModule,
     TenantsModule,
     TenantsPublicModule,
+    ServicesModule,
+    ProfessionalsModule,
   ],
   controllers: [HealthController],
 })

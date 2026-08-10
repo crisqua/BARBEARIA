@@ -1,13 +1,11 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import { hashPassword } from '../common/password.util';
 import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantBrandingCacheKey } from '../tenants-public/tenant-branding-cache-key';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
-
-const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class AdminTenantsService {
@@ -25,7 +23,7 @@ export class AdminTenantsService {
    * serve nesse caso específico (ele assume um tenant_id já conhecido).
    */
   async create(dto: CreateTenantDto) {
-    const passwordHash = await bcrypt.hash(dto.admin.password, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(dto.admin.password);
 
     try {
       return await this.prisma.$transaction(async (tx) => {

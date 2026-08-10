@@ -13,6 +13,12 @@ export interface SeededTenantUser {
   password: string;
 }
 
+export interface SeededUser {
+  userId: string;
+  email: string;
+  password: string;
+}
+
 export async function seedTenantWithUser(
   prisma: PrismaService,
   tenantContext: TenantContextService,
@@ -23,17 +29,35 @@ export async function seedTenantWithUser(
     data: { slug: `${opts.slugPrefix}-${uniqueSuffix}`, name: `Barbearia ${opts.slugPrefix}` },
   });
 
-  const password = opts.password ?? 'senha-forte-123';
-  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const email = `${opts.role}-${tenant.id}@test.local`;
-
-  const user = await tenantContext.runInTenantContext(tenant.id, (tx) =>
-    tx.user.create({
-      data: { tenantId: tenant.id, role: opts.role, name: 'Fixture', email, passwordHash },
-    }),
+  const { userId, email, password } = await seedUserInTenant(
+    prisma,
+    tenantContext,
+    tenant.id,
+    opts.role,
+    opts.password,
   );
 
-  return { tenantId: tenant.id, tenantSlug: tenant.slug, userId: user.id, email, password };
+  return { tenantId: tenant.id, tenantSlug: tenant.slug, userId, email, password };
+}
+
+/** Adiciona um usuário a um tenant JÁ EXISTENTE — use quando precisar de dois
+ * papéis no MESMO tenant (ex: admin + cliente vendo os mesmos dados). */
+export async function seedUserInTenant(
+  prisma: PrismaService,
+  tenantContext: TenantContextService,
+  tenantId: string,
+  role: 'admin' | 'barbeiro' | 'cliente',
+  password = 'senha-forte-123',
+): Promise<SeededUser> {
+  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const email = `${role}-${uniqueSuffix}@test.local`;
+
+  const user = await tenantContext.runInTenantContext(tenantId, (tx) =>
+    tx.user.create({ data: { tenantId, role, name: 'Fixture', email, passwordHash } }),
+  );
+
+  return { userId: user.id, email, password };
 }
 
 export async function seedSuperAdmin(
@@ -57,7 +81,13 @@ export async function cleanupTenantWithUser(
   tenantContext: TenantContextService,
   tenantId: string,
 ): Promise<void> {
-  await tenantContext.runInTenantContext(tenantId, (tx) => tx.user.deleteMany({ where: { tenantId } }));
+  await tenantContext.runInTenantContext(tenantId, async (tx) => {
+    await tx.appointment.deleteMany({ where: { tenantId } });
+    await tx.workingHour.deleteMany({ where: { tenantId } });
+    await tx.professionalService.deleteMany({ where: { tenantId } });
+    await tx.service.deleteMany({ where: { tenantId } });
+    await tx.user.deleteMany({ where: { tenantId } });
+  });
   await prisma.tenant.delete({ where: { id: tenantId } });
 }
 

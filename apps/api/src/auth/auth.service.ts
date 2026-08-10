@@ -1,13 +1,11 @@
 import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
-import * as bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword } from '../common/password.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthenticatedUser, UserRole } from './types/authenticated-user';
-
-const BCRYPT_ROUNDS = 12;
 
 export interface TokenPair {
   accessToken: string;
@@ -35,7 +33,7 @@ export class AuthService {
       throw new NotFoundException('Barbearia não encontrada.');
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(dto.password);
 
     const created = await this.tenantContext.runInTenantContext(tenant.id, async (tx) => {
       const existing = await tx.user.findUnique({
@@ -77,7 +75,7 @@ export class AuthService {
           where: { tenantId_email: { tenantId: tenant.id, email: dto.email } },
         }),
       );
-      if (!found || !(await bcrypt.compare(dto.password, found.passwordHash))) {
+      if (!found || !(await verifyPassword(dto.password, found.passwordHash))) {
         throw invalidCredentials();
       }
       return { id: found.id, tenantId: found.tenantId, role: found.role as UserRole };
@@ -89,7 +87,7 @@ export class AuthService {
     const found = await this.prisma.user.findFirst({
       where: { role: 'super_admin', email: dto.email },
     });
-    if (!found || !(await bcrypt.compare(dto.password, found.passwordHash))) {
+    if (!found || !(await verifyPassword(dto.password, found.passwordHash))) {
       throw invalidCredentials();
     }
     return { id: found.id, tenantId: found.tenantId, role: found.role as UserRole };
