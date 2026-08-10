@@ -1,4 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  assignService,
+  createProfessional,
+  createService,
+  createWorkingHour,
+  deleteWorkingHour,
+  getAccessToken,
+  getMe,
+  getMyTenant,
+  listAppointments,
+  listProfessionalServices,
+  listProfessionals,
+  listServices,
+  listWorkingHours,
+  login as apiLogin,
+  logout as apiLogout,
+  setAccessToken,
+  unassignService,
+  updateMyTenant,
+  updateProfessional,
+  updateService,
+} from "./api/client";
 
 // ─── TOKENS (Barberaria) ──────────────────────────
 const T = {
@@ -46,50 +68,120 @@ const Stat = ({ label, value, sub }) => (
   </div>
 );
 
+const ErrorBox = ({ children }) => (
+  <div style={{ background: "#F25C5C22", border: "1px solid #F25C5C55", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#F25C5C", marginBottom: 14 }}>
+    {children}
+  </div>
+);
+
+const FieldLabel = ({ children }) => (
+  <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{children}</div>
+);
+
+const fieldStyle = {
+  width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8,
+  padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box",
+};
+
+const thStyle = { padding: "12px 20px", textAlign: "left", fontSize: 11, color: T.muted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" };
+
+const ToggleSwitch = ({ on, onClick, labelOn = "Ativo", labelOff = "Inativo" }) => (
+  <div onClick={onClick} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+    <div style={{ width: 32, height: 18, borderRadius: 9, background: on ? T.gold : T.border, position: "relative" }}>
+      <div style={{ position: "absolute", top: 3, left: on ? 15 : 3, width: 12, height: 12, borderRadius: "50%", background: on ? T.bg : "#555", transition: "left 0.2s" }} />
+    </div>
+    <span style={{ fontSize: 11, color: on ? T.success : T.muted }}>{on ? labelOn : labelOff}</span>
+  </div>
+);
+
+const formatPrice = (cents) => `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
+
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const WEEKDAY_FULL = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
+function nextDays(count = 7) {
+  const days = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + i);
+    d.setUTCHours(0, 0, 0, 0);
+    days.push(d);
+  }
+  return days;
+}
+
+const dateKey = (d) => d.toISOString().slice(0, 10);
+
+// Horários vêm em UTC do backend e são tratados como "hora local da barbearia"
+// (sem conversão de fuso — mesma simplificação de MVP da Sprint 5).
+const formatSlotTime = (iso) =>
+  new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+
+const STATUS_LABEL = { scheduled: "agendado", completed: "concluído", cancelled: "cancelado" };
+const STATUS_COLOR = { scheduled: T.gold, completed: T.success, cancelled: "#F25C5C" };
+
+// ─── LOGIN ─────────────────────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await onLogin(email, password);
+    } catch (e) {
+      setError(e.message || "Não foi possível entrar.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: T.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
+      <div style={{ width: 360, background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, padding: 32 }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: T.gold + "22", border: `1.5px solid ${T.gold}55`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 20 }}>✂</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: T.gold, letterSpacing: "0.06em" }}>PAINEL DA BARBEARIA</div>
+        </div>
+        {error && <ErrorBox>{error}</ErrorBox>}
+        <div style={{ marginBottom: 14 }}>
+          <FieldLabel>E-mail</FieldLabel>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} style={fieldStyle} />
+        </div>
+        <div style={{ marginBottom: 22 }}>
+          <FieldLabel>Senha</FieldLabel>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            style={fieldStyle}
+          />
+        </div>
+        <div onClick={loading ? undefined : submit} style={{ background: T.gold, borderRadius: 8, padding: "12px", textAlign: "center", fontSize: 13, fontWeight: 700, color: T.bg, cursor: loading ? "default" : "pointer", opacity: loading ? 0.6 : 1 }}>
+          {loading ? "Entrando..." : "Entrar"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── SIDEBAR ──────────────────────────────────────────────
-const Sidebar = ({ active, setActive }) => {
+const Sidebar = ({ active, setActive, user, onLogout }) => {
   const sections = [
-    {
-      label: null,
-      items: [{ id: "dashboard", icon: "⊞", label: "Dashboard" }],
-    },
+    { label: null, items: [{ id: "dashboard", icon: "⊞", label: "Dashboard" }] },
     {
       label: "Operação",
       items: [
         { id: "agenda", icon: "◷", label: "Agenda" },
-        { id: "clientes", icon: "◉", label: "Clientes" },
+        { id: "profissionais", icon: "◉", label: "Profissionais" },
         { id: "servicos", icon: "✂", label: "Serviços" },
-        { id: "produtos", icon: "🧴", label: "Produtos" },
-        { id: "estoque", icon: "📦", label: "Estoque & Fornecedores" },
       ],
     },
-    {
-      label: "Comercial",
-      items: [
-        { id: "pacotes", icon: "🎁", label: "Pacotes & Promoções" },
-        { id: "cupons", icon: "🏷️", label: "Cupons de Desconto" },
-        { id: "assinaturas", icon: "♾", label: "Assinaturas" },
-        { id: "clube", icon: "👑", label: "Clube de Clientes" },
-      ],
-    },
-    {
-      label: "Financeiro",
-      items: [
-        { id: "financeiro", icon: "💰", label: "Financeiro" },
-        { id: "comissoes", icon: "◈", label: "Comissões" },
-      ],
-    },
-    {
-      label: "Relacionamento",
-      items: [
-        { id: "marketing", icon: "📣", label: "Notificar Promoções" },
-        { id: "satisfacao", icon: "⭐", label: "Satisfação do Cliente" },
-      ],
-    },
-    {
-      label: null,
-      items: [{ id: "config", icon: "⚙", label: "Configurações" }],
-    },
+    { label: null, items: [{ id: "config", icon: "⚙", label: "Configurações" }] },
   ];
   return (
     <div style={{
@@ -127,136 +219,166 @@ const Sidebar = ({ active, setActive }) => {
         ))}
       </div>
       <div style={{ padding: "16px 20px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Avatar name="Victor Mendes" size={28} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <Avatar name={user?.name || "Admin"} size={28} />
           <div>
-            <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>Victor Mendes</div>
+            <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{user?.name}</div>
             <div style={{ fontSize: 10, color: T.muted }}>Administrador</div>
           </div>
         </div>
+        <div onClick={onLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
       </div>
     </div>
   );
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────
-const Dashboard = () => (
-  <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Boa tarde, Victor ✂</div>
-      <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Quarta-feira, 11 de Junho de 2025</div>
-    </div>
-    <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
-      <Stat label="Agendamentos hoje" value="8" sub="2 pendentes" />
-      <Stat label="Faturamento hoje" value="R$ 420" sub="meta: R$ 500" />
-      <Stat label="Clientes este mês" value="127" sub="+14 novos" />
-      <Stat label="Ticket médio" value="R$ 58" sub="+R$6 vs maio" />
-    </div>
+function Dashboard() {
+  const [appointments, setAppointments] = useState([]);
+  const [professionals, setProfessionals] = useState([]);
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-    <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-      <div style={{ flex: 2, minWidth: 300, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+  useEffect(() => {
+    const from = new Date();
+    from.setUTCHours(0, 0, 0, 0);
+    const to = new Date(from.getTime() + 24 * 60 * 60_000);
+    Promise.all([
+      listAppointments({ from: from.toISOString(), to: to.toISOString() }),
+      listProfessionals(),
+      listServices(),
+    ])
+      .then(([apptRes, profRes, svcRes]) => {
+        setAppointments(apptRes.items);
+        setProfessionals(profRes.items);
+        setServices(svcRes.items);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const proName = (id) => professionals.find((p) => p.id === id)?.name || "—";
+  const svcName = (id) => services.find((s) => s.id === id)?.name || "—";
+  const sorted = [...appointments].sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+  const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+
+  return (
+    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Dashboard</div>
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 4, textTransform: "capitalize" }}>{hoje}</div>
+      </div>
+      <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
+        <Stat label="Agendamentos hoje" value={String(appointments.length)} sub={`${appointments.filter((a) => a.status === "scheduled").length} agendados`} />
+        <Stat label="Profissionais ativos" value={String(professionals.length)} />
+      </div>
+
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 14, fontWeight: 700, color: T.text }}>
           Agenda de Hoje
         </div>
-        {[
-          { hora: "14:00", cliente: "Rafael Alves", servico: "Corte + Barba", barbeiro: "Carlos", status: "confirmado" },
-          { hora: "14:45", cliente: "João Pedro", servico: "Corte", barbeiro: "Victor", status: "confirmado" },
-          { hora: "15:30", cliente: "Marcos Lima", servico: "Barba", barbeiro: "Carlos", status: "pendente" },
-          { hora: "16:15", cliente: "Thiago Costa", servico: "Corte + Barba", barbeiro: "Rafael", status: "confirmado" },
-          { hora: "17:00", cliente: "Bruno Melo", servico: "Sobrancelha", barbeiro: "Victor", status: "concluido" },
-        ].map((a, i) => (
-          <div key={i} style={{ padding: "14px 20px", borderBottom: i < 4 ? `1px solid ${T.bg}` : "none", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{a.hora}</div>
-            <Avatar name={a.cliente} size={32} />
+        {loading && <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>}
+        {!loading && sorted.length === 0 && <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Nenhum agendamento hoje.</div>}
+        {sorted.map((a, i) => (
+          <div key={a.id} style={{ padding: "14px 20px", borderBottom: i < sorted.length - 1 ? `1px solid ${T.bg}` : "none", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{a.cliente}</div>
-              <div style={{ fontSize: 11, color: T.muted }}>{a.servico} · {a.barbeiro}</div>
+              <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{svcName(a.serviceId)}</div>
+              <div style={{ fontSize: 11, color: T.muted }}>{proName(a.professionalId)}</div>
             </div>
-            <Badge color={a.status === "confirmado" ? T.success : a.status === "pendente" ? T.warning : T.muted}>{a.status}</Badge>
+            <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
           </div>
         ))}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 220, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, alignSelf: "start" }}>
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 14, fontWeight: 700, color: T.text }}>Profissionais</div>
-        {[
-          { nome: "Carlos Silva", atend: 18, comissao: "R$ 540" },
-          { nome: "Victor Mendes", atend: 22, comissao: "R$ 660" },
-          { nome: "Rafael Costa", atend: 15, comissao: "R$ 450" },
-        ].map((b, i) => (
-          <div key={i} style={{ padding: "14px 20px", borderBottom: i < 2 ? `1px solid ${T.bg}` : "none" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <Avatar name={b.nome} size={30} />
-              <div>
-                <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{b.nome}</div>
-                <div style={{ fontSize: 11, color: T.muted }}>{b.atend} atendimentos</div>
-              </div>
-            </div>
-            <div style={{ background: T.border, borderRadius: 4, height: 4, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${(b.atend / 22) * 100}%`, background: T.gold, borderRadius: 4 }} />
-            </div>
-            <div style={{ fontSize: 11, color: T.gold, marginTop: 4, textAlign: "right" }}>{b.comissao}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-// ─── AGENDA ───────────────────────────────────────────────
-const Agenda = () => {
-  const horarios = ["09:00", "09:45", "10:30", "11:15", "12:00", "13:30", "14:15", "15:00", "15:45", "16:30", "17:15", "18:00"];
-  const barbeiros = ["Carlos Silva", "Victor Mendes", "Rafael Costa"];
-  const agendamentos = {
-    "Carlos Silva": { "09:00": { c: "Marcos L.", s: "Corte+Barba", bg: T.gold }, "10:30": { c: "João P.", s: "Corte", bg: "#4A7C59" }, "14:15": { c: "Bruno M.", s: "Barba", bg: T.gold } },
-    "Victor Mendes": { "09:45": { c: "Rafael A.", s: "Corte+Barba", bg: "#5B6FA8" }, "13:30": { c: "Thiago C.", s: "Corte", bg: T.gold }, "16:30": { c: "Pedro H.", s: "Sobrancelha", bg: "#4A7C59" } },
-    "Rafael Costa": { "11:15": { c: "Felipe S.", s: "Corte", bg: T.gold }, "15:00": { c: "Anderson N.", s: "Barba", bg: "#5B6FA8" } },
-  };
-  return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Agenda da Semana</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>9 – 14 Junho 2025</div>
-        </div>
-        <div style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Agendar</div>
-      </div>
-      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ display: "flex", borderBottom: `1px solid ${T.border}` }}>
-          <div style={{ width: 70, flexShrink: 0 }} />
-          {barbeiros.map(b => (
-            <div key={b} style={{ flex: 1, padding: "12px 16px", borderLeft: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-              <Avatar name={b} size={26} />
-              <span style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{b.split(" ")[0]}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ overflowY: "auto", maxHeight: 460 }}>
-          {horarios.map(h => (
-            <div key={h} style={{ display: "flex", borderBottom: `1px solid ${T.bg}`, minHeight: 48 }}>
-              <div style={{ width: 70, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: T.muted, fontWeight: 600 }}>{h}</div>
-              {barbeiros.map(b => {
-                const ag = agendamentos[b]?.[h];
-                return (
-                  <div key={b} style={{ flex: 1, borderLeft: `1px solid ${T.bg}`, padding: 6 }}>
-                    {ag && (
-                      <div style={{ background: ag.bg + "22", border: `1px solid ${ag.bg}55`, borderRadius: 6, padding: "6px 10px", cursor: "pointer" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: ag.bg }}>{ag.c}</div>
-                        <div style={{ fontSize: 10, color: T.muted }}>{ag.s}</div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
-};
+}
 
-// ─── CLIENTES ─────────────────────────────────────────────
+// ─── AGENDA (navegável por dia, colunas por profissional) ──
+function Agenda() {
+  const [professionals, setProfessionals] = useState([]);
+  const [services, setServices] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(() => nextDays()[0]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([listProfessionals(), listServices()]).then(([p, s]) => {
+      setProfessionals(p.items);
+      setServices(s.items);
+    });
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    const from = new Date(`${dateKey(selectedDate)}T00:00:00.000Z`);
+    const to = new Date(from.getTime() + 24 * 60 * 60_000);
+    listAppointments({ from: from.toISOString(), to: to.toISOString() })
+      .then((r) => setAppointments(r.items))
+      .finally(() => setLoading(false));
+  }, [selectedDate]);
+
+  const svcName = (id) => services.find((s) => s.id === id)?.name || "—";
+  const days = nextDays(14);
+
+  return (
+    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Agenda</div>
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{professionals.length} profissionais</div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 24, paddingBottom: 4 }}>
+        {days.map((d) => {
+          const active = dateKey(d) === dateKey(selectedDate);
+          return (
+            <div key={dateKey(d)} onClick={() => setSelectedDate(d)} style={{
+              flexShrink: 0, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+              background: active ? T.gold + "22" : T.card,
+              border: `1.5px solid ${active ? T.gold : T.border}`,
+              textAlign: "center", minWidth: 56,
+            }}>
+              <div style={{ fontSize: 10, color: active ? T.gold : T.muted }}>{WEEKDAY_LABELS[d.getUTCDay()]}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: active ? T.gold : T.text }}>{d.getUTCDate()}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {professionals.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional cadastrado ainda.</div>
+      ) : (
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          {professionals.map((p) => {
+            const items = appointments
+              .filter((a) => a.professionalId === p.id)
+              .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+            return (
+              <div key={p.id} style={{ flex: 1, minWidth: 240, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+                  <Avatar name={p.name} size={26} />
+                  <span style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{p.name}</span>
+                </div>
+                {loading && <div style={{ padding: 14, fontSize: 12, color: T.muted }}>Carregando…</div>}
+                {!loading && items.length === 0 && <div style={{ padding: 14, fontSize: 12, color: T.muted }}>Sem agendamentos.</div>}
+                {!loading && items.map((a, i) => (
+                  <div key={a.id} style={{ padding: "10px 16px", borderBottom: i < items.length - 1 ? `1px solid ${T.bg}` : "none" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: T.gold, fontWeight: 700 }}>{formatSlotTime(a.startsAt)}</span>
+                      <Badge color={STATUS_COLOR[a.status]}>{STATUS_LABEL[a.status]}</Badge>
+                    </div>
+                    <div style={{ fontSize: 12, color: T.text, marginTop: 2 }}>{svcName(a.serviceId)}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── CLIENTES (fora de navegação, código mantido) ─────────
 const Clientes = () => {
   const clientes = [
     { nome: "Rafael Alves", visitas: 12, ultima: "11/06/2025", gasto: "R$ 780", plano: "Black ♾" },
@@ -312,7 +434,7 @@ const Clientes = () => {
   );
 };
 
-// ─── COMISSÕES ────────────────────────────────────────────
+// ─── COMISSÕES (fora de navegação, código mantido) ────────
 const Comissoes = () => {
   const dados = [
     { nome: "Carlos Silva", atend: 18, faturado: "R$ 1.080", percentual: "50%", comissao: "R$ 540" },
@@ -365,7 +487,7 @@ const Comissoes = () => {
   );
 };
 
-// ─── ASSINATURAS ──────────────────────────────────────────
+// ─── ASSINATURAS (fora de navegação, código mantido) ──────
 const Assinaturas = () => {
   const assinantes = [
     { nome: "Rafael Alves", plano: "Black ♾", desde: "Jan/2025", status: "ativo", proxima: "10/07/2025" },
@@ -420,119 +542,338 @@ const Assinaturas = () => {
 };
 
 // ─── SERVIÇOS ─────────────────────────────────────────────
-const Servicos = () => {
-  const [servicos, setServicos] = useState([
-    { id: 1, nome: "Corte", duracao: "45 min", preco: "40,00", ativo: true },
-    { id: 2, nome: "Barba", duracao: "30 min", preco: "35,00", ativo: true },
-    { id: 3, nome: "Corte + Barba", duracao: "60 min", preco: "65,00", ativo: true },
-    { id: 4, nome: "Sobrancelha", duracao: "15 min", preco: "20,00", ativo: true },
-    { id: 5, nome: "Relaxamento Facial", duracao: "30 min", preco: "45,00", ativo: false },
-    { id: 6, nome: "Pigmentação de Barba", duracao: "40 min", preco: "55,00", ativo: true },
-  ]);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ nome: "", duracao: "", preco: "" });
+function Servicos() {
+  const [servicos, setServicos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null | "new" | id
+  const [form, setForm] = useState({ name: "", durationMinutes: "", priceReais: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const startNew = () => { setForm({ nome: "", duracao: "", preco: "" }); setEditing("new"); };
-  const startEdit = (s) => { setForm({ nome: s.nome, duracao: s.duracao, preco: s.preco }); setEditing(s.id); };
+  const load = () => listServices().then((r) => setServicos(r.items)).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
 
-  const save = () => {
-    if (editing === "new") {
-      setServicos(p => [...p, { id: Date.now(), nome: form.nome, duracao: form.duracao, preco: form.preco, ativo: true }]);
-    } else {
-      setServicos(p => p.map(s => s.id === editing ? { ...s, ...form } : s));
-    }
-    setEditing(null);
+  const startNew = () => { setForm({ name: "", durationMinutes: "", priceReais: "" }); setError(""); setEditing("new"); };
+  const startEdit = (s) => {
+    setForm({ name: s.name, durationMinutes: String(s.durationMinutes), priceReais: (s.priceCents / 100).toFixed(2).replace(".", ",") });
+    setError("");
+    setEditing(s.id);
   };
 
-  const toggleAtivo = (id) => setServicos(p => p.map(s => s.id === id ? { ...s, ativo: !s.ativo } : s));
-  const remove = (id) => setServicos(p => p.filter(s => s.id !== id));
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const priceCents = Math.round(parseFloat(form.priceReais.replace(",", ".")) * 100);
+      const durationMinutes = parseInt(form.durationMinutes, 10);
+      if (!form.name || Number.isNaN(priceCents) || Number.isNaN(durationMinutes)) {
+        throw new Error("Preencha nome, duração e preço corretamente.");
+      }
+      if (editing === "new") {
+        await createService({ name: form.name, priceCents, durationMinutes });
+      } else {
+        await updateService(editing, { name: form.name, priceCents, durationMinutes });
+      }
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setError(e.message || "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleAtivo = async (s) => {
+    await updateService(s.id, { active: !s.active });
+    load();
+  };
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Serviços</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{servicos.length} serviços cadastrados · {servicos.filter(s => s.ativo).length} ativos</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{servicos.length} serviços cadastrados · {servicos.filter((s) => s.active).length} ativos</div>
         </div>
         <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Novo serviço</div>
       </div>
 
-      {/* Form inline de criação/edição */}
       {editing !== null && (
         <div style={{ background: T.card, border: `1.5px solid ${T.gold}55`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, marginBottom: 16 }}>
             {editing === "new" ? "Novo Serviço" : "Editar Serviço"}
           </div>
+          {error && <ErrorBox>{error}</ErrorBox>}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
             <div style={{ flex: 2, minWidth: 180 }}>
-              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Nome do serviço</div>
-              <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Barba + Cabelo"
-                style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+              <FieldLabel>Nome do serviço</FieldLabel>
+              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Barba + Cabelo" style={fieldStyle} />
             </div>
             <div style={{ flex: 1, minWidth: 120 }}>
-              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Duração</div>
-              <input value={form.duracao} onChange={e => setForm(f => ({ ...f, duracao: e.target.value }))} placeholder="Ex: 45 min"
-                style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+              <FieldLabel>Duração (min)</FieldLabel>
+              <input value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: e.target.value.replace(/\D/g, "") }))} placeholder="45" style={fieldStyle} />
             </div>
             <div style={{ flex: 1, minWidth: 120 }}>
-              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Preço (R$)</div>
-              <div style={{ display: "flex", alignItems: "center", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "0 14px" }}>
-                <span style={{ fontSize: 13, color: T.muted, marginRight: 4 }}>R$</span>
-                <input value={form.preco} onChange={e => setForm(f => ({ ...f, preco: e.target.value }))} placeholder="0,00"
-                  style={{ width: "100%", background: "transparent", border: "none", padding: "10px 0", color: T.text, fontSize: 13, outline: "none" }} />
-              </div>
+              <FieldLabel>Preço (R$)</FieldLabel>
+              <input value={form.priceReais} onChange={(e) => setForm((f) => ({ ...f, priceReais: e.target.value }))} placeholder="0,00" style={fieldStyle} />
             </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <div onClick={save} style={{ background: T.gold, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>Salvar</div>
+            <div onClick={saving ? undefined : save} style={{ background: T.gold, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Salvar"}</div>
             <div onClick={() => setEditing(null)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
           </div>
         </div>
       )}
 
       <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-              {["Serviço", "Duração", "Preço", "Status", ""].map(h => (
-                <th key={h} style={{ padding: "12px 20px", textAlign: "left", fontSize: 11, color: T.muted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {servicos.map(s => (
-              <tr key={s.id} style={{ borderBottom: `1px solid ${T.bg}`, opacity: s.ativo ? 1 : 0.5 }}>
-                <td style={{ padding: "12px 20px", fontSize: 13, color: T.text, fontWeight: 600 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 16 }}>✂</span> {s.nome}
-                  </div>
-                </td>
-                <td style={{ padding: "12px 20px", fontSize: 13, color: T.muted }}>{s.duracao}</td>
-                <td style={{ padding: "12px 20px", fontSize: 13, color: T.gold, fontWeight: 700 }}>R$ {s.preco}</td>
-                <td style={{ padding: "12px 20px" }}>
-                  <div onClick={() => toggleAtivo(s.id)} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                    <div style={{ width: 32, height: 18, borderRadius: 9, background: s.ativo ? T.gold : T.border, position: "relative" }}>
-                      <div style={{ position: "absolute", top: 3, left: s.ativo ? 15 : 3, width: 12, height: 12, borderRadius: "50%", background: s.ativo ? T.bg : "#555", transition: "left 0.2s" }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: s.ativo ? T.success : T.muted }}>{s.ativo ? "Ativo" : "Inativo"}</span>
-                  </div>
-                </td>
-                <td style={{ padding: "12px 20px", textAlign: "right" }}>
-                  <div style={{ display: "flex", gap: 14, justifyContent: "flex-end" }}>
-                    <span onClick={() => startEdit(s)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
-                    <span onClick={() => remove(s.id)} style={{ fontSize: 12, color: "#F25C5C", cursor: "pointer" }}>Remover</span>
-                  </div>
-                </td>
+        {loading ? (
+          <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                {["Serviço", "Duração", "Preço", "Status", ""].map((h) => <th key={h} style={thStyle}>{h}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {servicos.map((s) => (
+                <tr key={s.id} style={{ borderBottom: `1px solid ${T.bg}`, opacity: s.active ? 1 : 0.5 }}>
+                  <td style={{ padding: "12px 20px", fontSize: 13, color: T.text, fontWeight: 600 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 16 }}>✂</span> {s.name}
+                    </div>
+                  </td>
+                  <td style={{ padding: "12px 20px", fontSize: 13, color: T.muted }}>{s.durationMinutes} min</td>
+                  <td style={{ padding: "12px 20px", fontSize: 13, color: T.gold, fontWeight: 700 }}>{formatPrice(s.priceCents)}</td>
+                  <td style={{ padding: "12px 20px" }}>
+                    <ToggleSwitch on={s.active} onClick={() => toggleAtivo(s)} />
+                  </td>
+                  <td style={{ padding: "12px 20px", textAlign: "right" }}>
+                    <span onClick={() => startEdit(s)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
-};
+}
 
-// ─── PRODUTOS ─────────────────────────────────────────────
+// ─── PROFISSIONAIS ──────────────────────────────────────────
+function ProfissionalDetalhe({ professional, allServices }) {
+  const [myServices, setMyServices] = useState([]);
+  const [hours, setHours] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [addingHour, setAddingHour] = useState(false);
+  const [hourForm, setHourForm] = useState({ weekday: 1, startTime: "09:00", endTime: "18:00" });
+  const [error, setError] = useState("");
+
+  const load = () =>
+    Promise.all([listProfessionalServices(professional.id), listWorkingHours(professional.id)])
+      .then(([svcs, wh]) => { setMyServices(svcs); setHours(wh); })
+      .finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, [professional.id]);
+
+  const hasService = (id) => myServices.some((s) => s.id === id);
+
+  const toggleService = async (serviceId) => {
+    setError("");
+    try {
+      if (hasService(serviceId)) {
+        await unassignService(professional.id, serviceId);
+      } else {
+        await assignService(professional.id, serviceId);
+      }
+      load();
+    } catch (e) {
+      setError(e.message || "Não foi possível atualizar.");
+    }
+  };
+
+  const addHour = async () => {
+    setError("");
+    try {
+      await createWorkingHour(professional.id, {
+        weekday: Number(hourForm.weekday),
+        startTime: hourForm.startTime,
+        endTime: hourForm.endTime,
+      });
+      setAddingHour(false);
+      load();
+    } catch (e) {
+      setError(e.message || "Não foi possível adicionar o horário.");
+    }
+  };
+
+  const removeHour = async (id) => {
+    await deleteWorkingHour(professional.id, id);
+    load();
+  };
+
+  if (loading) return <div style={{ padding: 16, fontSize: 12, color: T.muted, borderTop: `1px solid ${T.border}` }}>Carregando…</div>;
+
+  return (
+    <div style={{ borderTop: `1px solid ${T.border}`, padding: 16, display: "flex", gap: 24, flexWrap: "wrap" }}>
+      {error && <div style={{ width: "100%" }}><ErrorBox>{error}</ErrorBox></div>}
+
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Serviços que realiza</div>
+        {allServices.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum serviço cadastrado ainda.</div>}
+        {allServices.map((s) => (
+          <div key={s.id} onClick={() => toggleService(s.id)} style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "8px 10px", marginBottom: 6, borderRadius: 6, cursor: "pointer",
+            border: `1px solid ${hasService(s.id) ? T.gold + "55" : T.border}`,
+            background: hasService(s.id) ? T.gold + "0C" : "transparent",
+          }}>
+            <span style={{ fontSize: 12, color: hasService(s.id) ? T.gold : T.muted }}>{s.name}</span>
+            <span style={{ fontSize: 11, color: hasService(s.id) ? T.gold : T.muted }}>{hasService(s.id) ? "✓ associado" : "adicionar"}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 260 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Horário de trabalho</div>
+          <span onClick={() => setAddingHour((a) => !a)} style={{ fontSize: 11, color: T.gold, cursor: "pointer" }}>+ Adicionar</span>
+        </div>
+        {addingHour && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <select value={hourForm.weekday} onChange={(e) => setHourForm((f) => ({ ...f, weekday: e.target.value }))} style={{ ...fieldStyle, width: 120 }}>
+              {WEEKDAY_FULL.map((w, i) => <option key={i} value={i}>{w}</option>)}
+            </select>
+            <input value={hourForm.startTime} onChange={(e) => setHourForm((f) => ({ ...f, startTime: e.target.value }))} placeholder="09:00" style={{ ...fieldStyle, width: 70 }} />
+            <input value={hourForm.endTime} onChange={(e) => setHourForm((f) => ({ ...f, endTime: e.target.value }))} placeholder="18:00" style={{ ...fieldStyle, width: 70 }} />
+            <div onClick={addHour} style={{ background: T.gold, borderRadius: 6, padding: "8px 12px", fontSize: 11, fontWeight: 700, color: T.bg, cursor: "pointer" }}>Salvar</div>
+          </div>
+        )}
+        {hours.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum horário cadastrado.</div>}
+        {hours.map((h) => (
+          <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", marginBottom: 6, background: T.surface, borderRadius: 6 }}>
+            <span style={{ fontSize: 12, color: T.text }}>{WEEKDAY_FULL[h.weekday]} · {h.startTime}–{h.endTime}</span>
+            <span onClick={() => removeHour(h.id)} style={{ fontSize: 11, color: "#F25C5C", cursor: "pointer" }}>Remover</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Profissionais() {
+  const [profissionais, setProfissionais] = useState([]);
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null | "new" | id
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(null);
+
+  const load = () =>
+    Promise.all([listProfessionals(), listServices()])
+      .then(([p, s]) => { setProfissionais(p.items); setServices(s.items); })
+      .finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, []);
+
+  const startNew = () => { setForm({ name: "", email: "", phone: "", password: "" }); setError(""); setEditing("new"); };
+  const startEdit = (p) => { setForm({ name: p.name, email: p.email, phone: p.phone || "", password: "" }); setError(""); setEditing(p.id); };
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      if (editing === "new") {
+        await createProfessional({ name: form.name, email: form.email, phone: form.phone || undefined, password: form.password });
+      } else {
+        await updateProfessional(editing, { name: form.name, phone: form.phone || undefined });
+      }
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setError(e.message || "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Profissionais</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{profissionais.length} profissionais cadastrados</div>
+        </div>
+        <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Novo profissional</div>
+      </div>
+
+      {editing !== null && (
+        <div style={{ background: T.card, border: `1.5px solid ${T.gold}55`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, marginBottom: 16 }}>
+            {editing === "new" ? "Novo Profissional" : "Editar Profissional"}
+          </div>
+          {error && <ErrorBox>{error}</ErrorBox>}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <FieldLabel>Nome</FieldLabel>
+              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={fieldStyle} />
+            </div>
+            {editing === "new" && (
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <FieldLabel>E-mail</FieldLabel>
+                <input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} style={fieldStyle} />
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <FieldLabel>Telefone</FieldLabel>
+              <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={fieldStyle} />
+            </div>
+            {editing === "new" && (
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <FieldLabel>Senha inicial</FieldLabel>
+                <input type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} style={fieldStyle} />
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div onClick={saving ? undefined : save} style={{ background: T.gold, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Salvar"}</div>
+            <div onClick={() => setEditing(null)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : profissionais.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional cadastrado ainda.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {profissionais.map((p) => (
+            <div key={p.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
+                <Avatar name={p.name} size={40} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{p.email}{p.phone ? ` · ${p.phone}` : ""}</div>
+                </div>
+                <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+                <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>
+                  {expanded === p.id ? "Fechar ▲" : "Detalhes ▼"}
+                </span>
+              </div>
+              {expanded === p.id && <ProfissionalDetalhe professional={p} allServices={services} />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PRODUTOS (fora de navegação, código mantido) ─────────
 const Produtos = () => {
   const [produtos, setProdutos] = useState([
     { id: 1, nome: "Gel Modelador Fixação Forte", categoria: "Cabelo", preco: "28,00", estoque: 14, ativo: true },
@@ -578,7 +919,6 @@ const Produtos = () => {
         <Stat label="Sem estoque" value={String(produtos.filter(p => p.estoque === 0).length)} sub="repor urgente" />
       </div>
 
-      {/* Form inline de criação/edição */}
       {editing !== null && (
         <div style={{ background: T.card, border: `1.5px solid ${T.gold}55`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, marginBottom: 16 }}>
@@ -663,7 +1003,7 @@ const Produtos = () => {
   );
 };
 
-// ─── ESTOQUE & FORNECEDORES ───────────────────────────────
+// ─── ESTOQUE & FORNECEDORES (fora de navegação, código mantido) ──
 const Estoque = () => {
   const [tab, setTab] = useState("estoque");
   const itensEstoque = [
@@ -744,7 +1084,7 @@ const Estoque = () => {
   );
 };
 
-// ─── PACOTES & PROMOÇÕES ──────────────────────────────────
+// ─── PACOTES & PROMOÇÕES (fora de navegação, código mantido) ──
 const Pacotes = () => {
   const [pacotes, setPacotes] = useState([
     { id: 1, nome: "Combo Visual Completo", itens: "Corte + Barba + Sobrancelha", precoOriginal: "120,00", precoPromo: "95,00", ativo: true },
@@ -791,7 +1131,7 @@ const Pacotes = () => {
   );
 };
 
-// ─── CUPONS DE DESCONTO ───────────────────────────────────
+// ─── CUPONS DE DESCONTO (fora de navegação, código mantido) ──
 const Cupons = () => {
   const cupons = [
     { codigo: "BEMVINDO10", desconto: "10%", usos: 34, limite: 100, validade: "30/06/2025", status: "ativo" },
@@ -836,7 +1176,7 @@ const Cupons = () => {
   );
 };
 
-// ─── CLUBE DE CLIENTES ────────────────────────────────────
+// ─── CLUBE DE CLIENTES (fora de navegação, código mantido) ──
 const Clube = () => {
   const membros = [
     { nome: "Rafael Alves", pontos: 480, nivel: "Ouro" },
@@ -892,7 +1232,7 @@ const Clube = () => {
   );
 };
 
-// ─── FINANCEIRO ───────────────────────────────────────────
+// ─── FINANCEIRO (fora de navegação, código mantido) ────────
 const Financeiro = () => {
   const [tab, setTab] = useState("resumo");
   const receitas = [
@@ -992,7 +1332,7 @@ const Financeiro = () => {
   );
 };
 
-// ─── NOTIFICAR PROMOÇÕES (envio de mensagens) ─────────────
+// ─── NOTIFICAR PROMOÇÕES (fora de navegação, código mantido) ─
 const Marketing = () => {
   const [mensagem, setMensagem] = useState("🔥 Promoção especial essa semana! Corte + Barba por R$ 55. Agende já pelo app!");
   const [publico, setPublico] = useState("todos");
@@ -1045,7 +1385,7 @@ const Marketing = () => {
   );
 };
 
-// ─── SATISFAÇÃO DO CLIENTE ─────────────────────────────────
+// ─── SATISFAÇÃO DO CLIENTE (fora de navegação, código mantido) ─
 const Satisfacao = () => {
   const avaliacoes = [
     { cliente: "Rafael Alves", nota: 5, comentario: "Excelente atendimento, Carlos é fera!", data: "11/06/2025" },
@@ -1086,84 +1426,135 @@ const Satisfacao = () => {
 };
 
 // ─── CONFIGURAÇÕES ────────────────────────────────────────
-const Config = () => {
+function Config() {
+  const [tenant, setTenant] = useState(null);
   const [cor1, setCor1] = useState("#C9A84C");
   const [cor2, setCor2] = useState("#0F0F0F");
-  const modules = ["Comissões", "Assinaturas", "WhatsApp/SMS", "Dashboard Avançado", "Marketing", "Estoque"];
-  const [activeModules, setActiveModules] = useState(["Comissões", "Assinaturas", "WhatsApp/SMS"]);
-  const toggle = m => setActiveModules(p => p.includes(m) ? p.filter(x => x !== m) : [...p, m]);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getMyTenant().then((t) => {
+      setTenant(t);
+      setCor1(t.primaryColor);
+      setCor2(t.secondaryColor);
+      setLogoUrl(t.logoUrl || "");
+    });
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      const updated = await updateMyTenant({ primaryColor: cor1, secondaryColor: cor2, ...(logoUrl ? { logoUrl } : {}) });
+      setTenant(updated);
+      setSaved(true);
+    } catch (e) {
+      setError(e.message || "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Configurações</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Identidade visual e módulos</div>
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Identidade visual da barbearia</div>
       </div>
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-        {/* Branding */}
-        <div style={{ flex: 1, minWidth: 280, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 20 }}>Identidade Visual</div>
-          <div style={{ background: "#111", border: `2px dashed ${T.border}`, borderRadius: 10, padding: 28, textAlign: "center", marginBottom: 20 }}>
-            <div style={{ fontSize: 36 }}>✂</div>
-            <div style={{ fontSize: 13, color: T.gold, fontWeight: 800, marginTop: 8 }}>BARBERARIA</div>
-            <div style={{ fontSize: 10, color: T.muted }}>Alterar logotipo</div>
-          </div>
-          {[["Cor Primária (Acento)", cor1, setCor1], ["Cor de Fundo", cor2, setCor2]].map(([label, val, setter]) => (
-            <div key={label} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: T.muted, marginBottom: 8, fontWeight: 600 }}>{label}</div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 6, background: val, border: `1px solid ${T.border}`, cursor: "pointer" }} />
-                <input value={val} onChange={e => setter(e.target.value)}
-                  style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", color: T.text, fontSize: 13, outline: "none" }} />
-              </div>
-            </div>
-          ))}
-          <div style={{ background: cor2, borderRadius: 10, padding: 16, border: `1px solid ${T.border}`, marginTop: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: cor1, marginBottom: 10 }}>Preview</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <div style={{ background: cor1, borderRadius: 6, padding: "6px 12px", fontSize: 11, color: cor2, fontWeight: 700, cursor: "pointer" }}>Agendar</div>
-              <div style={{ border: `1px solid ${cor1}`, borderRadius: 6, padding: "6px 12px", fontSize: 11, color: cor1, cursor: "pointer" }}>Ver mais</div>
-            </div>
-          </div>
-          <div style={{ background: T.gold, borderRadius: 8, padding: "10px", textAlign: "center", cursor: "pointer", fontSize: 13, fontWeight: 700, color: T.bg, marginTop: 20 }}>Salvar Identidade</div>
+      <div style={{ maxWidth: 420, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 20 }}>Identidade Visual</div>
+        {error && <ErrorBox>{error}</ErrorBox>}
+        <div style={{ marginBottom: 16 }}>
+          <FieldLabel>Nome da barbearia</FieldLabel>
+          <div style={{ fontSize: 13, color: T.text }}>{tenant?.name}</div>
         </div>
-
-        {/* Módulos */}
-        <div style={{ flex: 1, minWidth: 280, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 6 }}>Módulos Opcionais</div>
-          <div style={{ fontSize: 12, color: T.muted, marginBottom: 20 }}>Ative as funcionalidades que sua barbearia precisa</div>
-          <div style={{ background: "#1a1a1a", borderRadius: 8, padding: "10px 14px", marginBottom: 20, display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 14 }}>🔒</span>
-            <div>
-              <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>Módulos Core — sempre ativos</div>
-              <div style={{ fontSize: 11, color: T.muted }}>Agendamento · CRM Básico · Perfil do Profissional</div>
+        <div style={{ marginBottom: 16 }}>
+          <FieldLabel>Logo (URL)</FieldLabel>
+          <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…" style={fieldStyle} />
+        </div>
+        {[["Cor Primária (Acento)", cor1, setCor1], ["Cor de Fundo", cor2, setCor2]].map(([label, val, setter]) => (
+          <div key={label} style={{ marginBottom: 16 }}>
+            <FieldLabel>{label}</FieldLabel>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 6, background: val, border: `1px solid ${T.border}` }} />
+              <input value={val} onChange={(e) => setter(e.target.value)} style={fieldStyle} />
             </div>
           </div>
-          {modules.map(m => {
-            const on = activeModules.includes(m);
-            return (
-              <div key={m} onClick={() => toggle(m)} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 14px", marginBottom: 8, borderRadius: 8, cursor: "pointer",
-                border: `1px solid ${on ? T.gold + "66" : T.border}`,
-                background: on ? T.gold + "0C" : T.surface,
-              }}>
-                <div style={{ fontSize: 13, color: on ? T.gold : T.muted, fontWeight: on ? 600 : 400 }}>{m}</div>
-                <div style={{ width: 38, height: 20, borderRadius: 10, background: on ? T.gold : T.border, position: "relative" }}>
-                  <div style={{ position: "absolute", top: 3, left: on ? 18 : 3, width: 14, height: 14, borderRadius: "50%", background: on ? T.bg : "#555", transition: "left 0.2s" }} />
-                </div>
-              </div>
-            );
-          })}
+        ))}
+        <div style={{ background: cor2, borderRadius: 10, padding: 16, border: `1px solid ${T.border}`, marginTop: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: cor1, marginBottom: 10 }}>Preview</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ background: cor1, borderRadius: 6, padding: "6px 12px", fontSize: 11, color: cor2, fontWeight: 700 }}>Agendar</div>
+            <div style={{ border: `1px solid ${cor1}`, borderRadius: 6, padding: "6px 12px", fontSize: 11, color: cor1 }}>Ver mais</div>
+          </div>
+        </div>
+        <div onClick={saving ? undefined : save} style={{ background: T.gold, borderRadius: 8, padding: "10px", textAlign: "center", cursor: "pointer", fontSize: 13, fontWeight: 700, color: T.bg, marginTop: 20, opacity: saving ? 0.6 : 1 }}>
+          {saving ? "Salvando..." : saved ? "Salvo ✓" : "Salvar Identidade"}
         </div>
       </div>
     </div>
   );
-};
+}
 
 // ─── ROOT ─────────────────────────────────────────────────
 export default function App() {
+  const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
+  const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
+
+  useEffect(() => {
+    if (!getAccessToken()) {
+      setScreen("login");
+      return;
+    }
+    getMe()
+      .then((me) => {
+        if (me.role !== "admin") {
+          setAccessToken(null);
+          setScreen("login");
+          return;
+        }
+        setUser(me);
+        setScreen("app");
+      })
+      .catch(() => {
+        setAccessToken(null);
+        setScreen("login");
+      });
+  }, []);
+
+  const handleLogin = async (email, password) => {
+    const res = await apiLogin(email, password);
+    if (res.user.role !== "admin") {
+      throw new Error("Esse painel é só para administradores da barbearia.");
+    }
+    setAccessToken(res.accessToken);
+    const me = await getMe();
+    setUser(me);
+    setScreen("app");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiLogout();
+    } catch {
+      // segue com o logout local mesmo se a chamada de rede falhar
+    }
+    setAccessToken(null);
+    setUser(null);
+    setScreen("login");
+  };
+
+  if (screen === null) {
+    return <div style={{ minHeight: "100vh", background: T.bg }} />;
+  }
+  if (screen === "login") {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   const render = () => {
     if (page === "dashboard") return <Dashboard />;
@@ -1172,6 +1563,7 @@ export default function App() {
     if (page === "comissoes") return <Comissoes />;
     if (page === "assinaturas") return <Assinaturas />;
     if (page === "servicos") return <Servicos />;
+    if (page === "profissionais") return <Profissionais />;
     if (page === "produtos") return <Produtos />;
     if (page === "estoque") return <Estoque />;
     if (page === "pacotes") return <Pacotes />;
@@ -1186,7 +1578,7 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: T.bg, minHeight: "100vh", display: "flex" }}>
-      <Sidebar active={page} setActive={setPage} />
+      <Sidebar active={page} setActive={setPage} user={user} onLogout={handleLogout} />
       {render()}
     </div>
   );
