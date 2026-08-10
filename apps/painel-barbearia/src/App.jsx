@@ -97,6 +97,19 @@ const ToggleSwitch = ({ on, onClick, labelOn = "Ativo", labelOff = "Inativo" }) 
 
 const formatPrice = (cents) => `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
 
+// Máscara de telefone BR: (11) 9999-9999 (fixo) ou (11) 99999-9999 (celular),
+// aplicada progressivamente conforme os dígitos são digitados.
+const formatPhoneMask = (value) => {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length === 0) return "";
+  const ddd = digits.slice(0, 2);
+  if (digits.length <= 2) return `(${ddd}`;
+  const rest = digits.slice(2);
+  if (rest.length <= 4) return `(${ddd}) ${rest}`;
+  if (rest.length <= 8) return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+};
+
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_FULL = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
@@ -331,7 +344,7 @@ function Dashboard() {
           </div>
         )}
         {sorted.map((a, i) => (
-          <div key={a.id} style={{ padding: "14px 20px", borderBottom: i < sorted.length - 1 ? `1px solid ${T.bg}` : "none", display: "flex", alignItems: "center", gap: 14 }}>
+          <div key={a.id} style={{ padding: "14px 20px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none", display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
             <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
             <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
@@ -783,17 +796,6 @@ function ProfissionalDetalhe({ professional, allServices }) {
     <div style={{ borderTop: `1px solid ${T.border}`, padding: 16, display: "flex", gap: 24, flexWrap: "wrap" }}>
       {error && <div style={{ width: "100%" }}><ErrorBox>{error}</ErrorBox></div>}
 
-      <div style={{ width: "100%", display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 4 }}>
-        <div>
-          <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
-          <div style={{ fontSize: 13, color: T.text, marginTop: 2 }}>{professional.email}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
-          <div style={{ fontSize: 13, color: T.text, marginTop: 2 }}>{professional.phone || "—"}</div>
-        </div>
-      </div>
-
       <div style={{ flex: 1, minWidth: 220 }}>
         <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Serviços que realiza</div>
         {allServices.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum serviço cadastrado ainda.</div>}
@@ -855,7 +857,7 @@ function Profissionais() {
   useEffect(() => { load(); }, []);
 
   const startNew = () => { setForm({ name: "", email: "", phone: "", password: "" }); setError(""); setEditing("new"); };
-  const startEdit = (p) => { setForm({ name: p.name, email: p.email, phone: p.phone || "", password: "" }); setError(""); setEditing(p.id); };
+  const startEdit = (p) => { setForm({ name: p.name, email: p.email, phone: p.phone ? formatPhoneMask(p.phone) : "", password: "" }); setError(""); setEditing(p.id); };
 
   const toggleAtivo = async (p) => {
     const wasActive = p.active;
@@ -916,7 +918,12 @@ function Profissionais() {
             </div>
             <div style={{ flex: 1, minWidth: 140 }}>
               <FieldLabel>Telefone</FieldLabel>
-              <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} style={fieldStyle} />
+              <input
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: formatPhoneMask(e.target.value) }))}
+                placeholder="(11) 9999-9999"
+                style={fieldStyle}
+              />
             </div>
             {editing === "new" && (
               <div style={{ flex: 1, minWidth: 140 }}>
@@ -938,14 +945,18 @@ function Profissionais() {
         <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional cadastrado ainda.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ padding: "0 16px 4px 70px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ flex: 1, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Nome</div>
+            <div style={{ flex: 1, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
+            <div style={{ flex: 1, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
+          </div>
           {profissionais.map((p) => (
             <div key={p.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", opacity: p.active === false ? 0.6 : 1 }}>
               <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
                 <Avatar name={p.name} size={40} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: T.muted }}>{p.email}{p.phone ? ` · ${p.phone}` : ""}</div>
-                </div>
+                <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
+                <div style={{ flex: 1, fontSize: 13, color: T.text }}>{p.phone ? formatPhoneMask(p.phone) : "—"}</div>
+                <div style={{ flex: 1, fontSize: 13, color: T.text }}>{p.email}</div>
                 <ToggleSwitch on={p.active !== false} onClick={() => toggleAtivo(p)} />
                 <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
                 <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>

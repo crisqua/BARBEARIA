@@ -64,6 +64,19 @@ const formatSlotTime = (iso) =>
 const formatSlotDate = (iso) =>
   new Date(iso).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "short", timeZone: "UTC" });
 
+// Máscara de telefone BR: (11) 9999-9999 (fixo) ou (11) 99999-9999 (celular),
+// aplicada progressivamente conforme os dígitos são digitados.
+const formatPhoneMask = (value) => {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length === 0) return "";
+  const ddd = digits.slice(0, 2);
+  if (digits.length <= 2) return `(${ddd}`;
+  const rest = digits.slice(2);
+  if (rest.length <= 4) return `(${ddd}) ${rest}`;
+  if (rest.length <= 8) return `(${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  return `(${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+};
+
 // "Agora" nos mesmos termos em que startsAt é armazenado: hora tratada como
 // hora local da barbearia (fixo America/Sao_Paulo), sem conversão. Comparar
 // startsAt direto com Date.now() (UTC real do dispositivo) desalinha pelo
@@ -221,7 +234,7 @@ function RegisterScreen({ T, onRegister, goLogin }) {
         {error && <ErrorBox T={T}>{error}</ErrorBox>}
         <input style={inputStyle(T)} placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} />
         <input style={inputStyle(T)} placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input style={inputStyle(T)} placeholder="Telefone (opcional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input style={inputStyle(T)} placeholder="(11) 9999-9999" value={phone} onChange={(e) => setPhone(formatPhoneMask(e.target.value))} />
         <input
           style={inputStyle(T)}
           placeholder="Senha (mín. 8 caracteres)"
