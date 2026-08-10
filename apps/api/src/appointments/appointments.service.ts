@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/types/authenticated-user';
+import { nowInBarbershopTime } from '../common/time.util';
 import { TenantTx } from '../prisma/tenant-context.service';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto';
@@ -24,7 +25,7 @@ export class AppointmentsService {
 
     const startsAt = new Date(dto.startsAt);
     if (Number.isNaN(startsAt.getTime())) throw new BadRequestException('startsAt inválido.');
-    if (startsAt.getTime() < Date.now()) {
+    if (startsAt.getTime() < nowInBarbershopTime().getTime()) {
       throw new BadRequestException('Não é possível agendar em um horário no passado.');
     }
 
@@ -105,7 +106,7 @@ export class AppointmentsService {
 
     const startsAt = new Date(dto.startsAt);
     if (Number.isNaN(startsAt.getTime())) throw new BadRequestException('startsAt inválido.');
-    if (startsAt.getTime() < Date.now()) {
+    if (startsAt.getTime() < nowInBarbershopTime().getTime()) {
       throw new BadRequestException('Não é possível remarcar para um horário no passado.');
     }
 

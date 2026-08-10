@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { nowInBarbershopTime } from '../../src/common/time.util';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { TenantContextService } from '../../src/prisma/tenant-context.service';
 import { createTestApp } from '../utils/create-test-app';
@@ -62,7 +63,7 @@ describe('CRUD de appointments (/v1/appointments)', () => {
       .send({
         serviceId: fx.serviceId,
         professionalId: fx.professionalId,
-        startsAt: new Date(Date.now() - 60_000).toISOString(),
+        startsAt: new Date(nowInBarbershopTime().getTime() - 60_000).toISOString(),
       });
 
     expect(res.status).toBe(400);

@@ -43,10 +43,11 @@ const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 function nextDays(count = 7) {
   const days = [];
+  const base = new Date(nowInBarbershopTime());
+  base.setUTCHours(0, 0, 0, 0);
   for (let i = 0; i < count; i++) {
-    const d = new Date();
+    const d = new Date(base);
     d.setUTCDate(d.getUTCDate() + i);
-    d.setUTCHours(0, 0, 0, 0);
     days.push(d);
   }
   return days;
@@ -62,6 +63,22 @@ const formatSlotTime = (iso) =>
 
 const formatSlotDate = (iso) =>
   new Date(iso).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "short", timeZone: "UTC" });
+
+// "Agora" nos mesmos termos em que startsAt é armazenado: hora tratada como
+// hora local da barbearia (fixo America/Sao_Paulo), sem conversão. Comparar
+// startsAt direto com Date.now() (UTC real do dispositivo) desalinha pelo
+// offset do fuso do usuário — ex: escondia um agendamento das 11h como "já
+// passado" quando na verdade eram só 8h39 no horário local.
+const nowInBarbershopTime = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (type) => Number(parts.find((p) => p.type === type).value);
+  return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+};
 
 const Avatar = ({ name, size = 32, T }) => {
   const initials = name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
@@ -312,6 +329,9 @@ export default function App() {
 
   const handleLogin = async (email, password) => {
     const res = await apiLogin(email, password);
+    if (res.user.role !== "cliente") {
+      throw new Error("Essa conta não é de cliente. Use o painel da barbearia para acessar com um usuário admin ou barbeiro.");
+    }
     setAccessToken(res.accessToken);
     const me = await getMe();
     setUser(me);
@@ -373,7 +393,7 @@ export default function App() {
     } catch (e) {
       setBookingError(e.message || "Não foi possível confirmar. Escolha outro horário.");
       getAvailability(selectedPro.id, selectedService.id, dateKey(selectedDate))
-        .then(setAvailableSlots)
+        .then((res) => setAvailableSlots(res.slots))
         .catch(() => {});
     } finally {
       setBookingLoading(false);
@@ -499,14 +519,10 @@ export default function App() {
 
   // ── MEUS AGENDAMENTOS ──
   if (screen === "meus-agendamentos") {
-    const now = Date.now();
+    const now = nowInBarbershopTime();
     const upcoming = appointments
       .filter((a) => a.status === "scheduled" && new Date(a.startsAt).getTime() >= now)
       .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
-    const historico = appointments
-      .filter((a) => !upcoming.includes(a))
-      .sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt));
-    const proximo = upcoming[0];
 
     const label = (a) => {
       const svc = services.find((s) => s.id === a.serviceId);
@@ -519,52 +535,77 @@ export default function App() {
         <div style={{ padding: "16px 24px 32px" }}>
           <BackHeader T={T} title="Meus Agendamentos" onBack={() => setScreen("home")} />
 
-          {proximo ? (
-            <>
-              <div style={{ fontSize: 11, color: T.gold, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Próximo</div>
-              <div style={{ background: T.gold + "12", border: `1.5px solid ${T.gold}66`, borderRadius: 12, padding: 16, marginBottom: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: T.gold, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Ativos</div>
+            <div onClick={() => setScreen("meus-historicos")} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Meus Históricos</div>
+          </div>
+
+          {upcoming.length > 0 ? (
+            upcoming.map((a) => (
+              <div key={a.id} style={{ background: T.gold + "12", border: `1.5px solid ${T.gold}66`, borderRadius: 12, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                   <div>
-                    <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{label(proximo).servico}</div>
-                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>com {label(proximo).profissional}</div>
+                    <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{label(a).servico}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>com {label(a).profissional}</div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: T.gold }}>{label(proximo).preco}</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: T.gold }}>{label(a).preco}</div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${T.gold}33` }}>
                   <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>
-                    {formatSlotDate(proximo.startsAt)} · {formatSlotTime(proximo.startsAt)}
+                    {formatSlotDate(a.startsAt)} · {formatSlotTime(a.startsAt)}
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <div onClick={() => handleCancel(proximo.id)} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Cancelar</div>
-                    <div onClick={() => startReschedule(proximo)} style={{ fontSize: 11, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Remarcar</div>
+                    <div onClick={() => handleCancel(a.id)} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Cancelar</div>
+                    <div onClick={() => startReschedule(a)} style={{ fontSize: 11, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Remarcar</div>
                   </div>
                 </div>
               </div>
-            </>
+            ))
           ) : (
             <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px" }}>Nenhum agendamento futuro.</div>
           )}
+        </div>
+      </Phone>
+    );
+  }
 
-          {historico.length > 0 && (
-            <>
-              <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Histórico</div>
-              {historico.map((a) => (
-                <div key={a.id} style={{
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                  background: T.card, border: `1px solid ${T.border}`, borderRadius: 10,
-                  padding: "12px 14px", marginBottom: 8, opacity: a.status === "cancelled" ? 0.5 : 0.85,
-                }}>
-                  <div>
-                    <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{label(a).servico}</div>
-                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
-                      {label(a).profissional} · {formatSlotDate(a.startsAt)} {formatSlotTime(a.startsAt)}
-                      {a.status === "cancelled" ? " · cancelado" : ""}
-                    </div>
+  // ── MEUS HISTÓRICOS ──
+  if (screen === "meus-historicos") {
+    const now = nowInBarbershopTime();
+    const historico = appointments
+      .filter((a) => !(a.status === "scheduled" && new Date(a.startsAt).getTime() >= now))
+      .sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt));
+
+    const label = (a) => {
+      const svc = services.find((s) => s.id === a.serviceId);
+      const pro = allProfessionals.find((p) => p.id === a.professionalId);
+      return { servico: svc?.name || "Serviço", profissional: pro?.name || "Profissional", preco: svc ? formatPrice(svc.priceCents) : "" };
+    };
+
+    return (
+      <Phone T={T}>
+        <div style={{ padding: "16px 24px 32px" }}>
+          <BackHeader T={T} title="Meus Históricos" onBack={() => setScreen("meus-agendamentos")} />
+
+          {historico.length > 0 ? (
+            historico.map((a) => (
+              <div key={a.id} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                background: T.card, border: `1px solid ${T.border}`, borderRadius: 10,
+                padding: "12px 14px", marginBottom: 8, opacity: a.status === "cancelled" ? 0.5 : 0.85,
+              }}>
+                <div>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{label(a).servico}</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                    {label(a).profissional} · {formatSlotDate(a.startsAt)} {formatSlotTime(a.startsAt)}
+                    {a.status === "cancelled" ? " · cancelado" : ""}
                   </div>
-                  <div style={{ fontSize: 12, color: T.muted, fontWeight: 700 }}>{label(a).preco}</div>
                 </div>
-              ))}
-            </>
+                <div style={{ fontSize: 12, color: T.muted, fontWeight: 700 }}>{label(a).preco}</div>
+              </div>
+            ))
+          ) : (
+            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px" }}>Nenhum histórico ainda.</div>
           )}
         </div>
       </Phone>

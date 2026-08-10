@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantTx } from '../prisma/tenant-context.service';
+import { nowInBarbershopTime } from '../common/time.util';
 
 export interface AvailabilityResult {
   date: string;
@@ -43,7 +44,7 @@ export class AvailabilityService {
     ]);
 
     const durationMs = service.durationMinutes * 60_000;
-    const now = Date.now();
+    const now = nowInBarbershopTime().getTime();
     const slots: string[] = [];
 
     for (const block of blocks) {

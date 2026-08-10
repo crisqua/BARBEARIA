@@ -1480,7 +1480,13 @@ function Config() {
           <div key={label} style={{ marginBottom: 16 }}>
             <FieldLabel>{label}</FieldLabel>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <div style={{ width: 36, height: 36, borderRadius: 6, background: val, border: `1px solid ${T.border}` }} />
+              <input
+                type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(val) ? val : "#000000"}
+                onChange={(e) => setter(e.target.value)}
+                title="Escolher cor"
+                style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${T.border}`, padding: 0, cursor: "pointer", background: "none" }}
+              />
               <input value={val} onChange={(e) => setter(e.target.value)} style={fieldStyle} />
             </div>
           </div>
