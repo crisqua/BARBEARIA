@@ -839,12 +839,17 @@ function ProfissionalDetalhe({ professional, allServices }) {
   );
 }
 
+// Colunas compartilhadas entre cabeçalho e linhas da tabela — grid (não flex) para
+// alinhar os rótulos com os valores mesmo a linha tendo elementos a mais no fim
+// (toggle, Editar, Detalhes) que o cabeçalho não tem.
+const PROF_GRID_COLUMNS = "40px 1fr 1fr 1fr 1fr 90px 50px 90px";
+
 function Profissionais() {
   const [profissionais, setProfissionais] = useState([]);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | "new" | id
-  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", commissionPercentage: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(null);
@@ -856,8 +861,18 @@ function Profissionais() {
 
   useEffect(() => { load(); }, []);
 
-  const startNew = () => { setForm({ name: "", email: "", phone: "", password: "" }); setError(""); setEditing("new"); };
-  const startEdit = (p) => { setForm({ name: p.name, email: p.email, phone: p.phone ? formatPhoneMask(p.phone) : "", password: "" }); setError(""); setEditing(p.id); };
+  const startNew = () => { setForm({ name: "", email: "", phone: "", password: "", commissionPercentage: "" }); setError(""); setEditing("new"); };
+  const startEdit = (p) => {
+    setForm({
+      name: p.name,
+      email: p.email,
+      phone: p.phone ? formatPhoneMask(p.phone) : "",
+      password: "",
+      commissionPercentage: p.commissionPercentage != null ? String(p.commissionPercentage).replace(".", ",") : "",
+    });
+    setError("");
+    setEditing(p.id);
+  };
 
   const toggleAtivo = async (p) => {
     const wasActive = p.active;
@@ -869,13 +884,21 @@ function Profissionais() {
   };
 
   const save = async () => {
-    setSaving(true);
     setError("");
+    let commissionPercentage;
+    if (form.commissionPercentage.trim() !== "") {
+      commissionPercentage = parseFloat(form.commissionPercentage.replace(",", "."));
+      if (Number.isNaN(commissionPercentage) || commissionPercentage < 0 || commissionPercentage > 100) {
+        setError("% Comissão deve ser um número entre 0 e 100.");
+        return;
+      }
+    }
+    setSaving(true);
     try {
       if (editing === "new") {
-        await createProfessional({ name: form.name, email: form.email, phone: form.phone || undefined, password: form.password });
+        await createProfessional({ name: form.name, email: form.email, phone: form.phone || undefined, password: form.password, commissionPercentage });
       } else {
-        await updateProfessional(editing, { name: form.name, phone: form.phone || undefined });
+        await updateProfessional(editing, { name: form.name, phone: form.phone || undefined, commissionPercentage: commissionPercentage ?? null });
       }
       setEditing(null);
       await load();
@@ -931,6 +954,15 @@ function Profissionais() {
                 <input type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} style={fieldStyle} />
               </div>
             )}
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <FieldLabel>% Comissão</FieldLabel>
+              <input
+                value={form.commissionPercentage}
+                onChange={(e) => setForm((f) => ({ ...f, commissionPercentage: e.target.value }))}
+                placeholder="0,00"
+                style={fieldStyle}
+              />
+            </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <div onClick={saving ? undefined : save} style={{ background: T.gold, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Salvar"}</div>
@@ -945,18 +977,21 @@ function Profissionais() {
         <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional cadastrado ainda.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ padding: "0 16px 4px 70px", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ flex: 1, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Nome</div>
-            <div style={{ flex: 1, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
-            <div style={{ flex: 1, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
+          <div style={{ padding: "0 16px 4px 16px", display: "grid", gridTemplateColumns: PROF_GRID_COLUMNS, alignItems: "center", gap: 14 }}>
+            <div />
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Nome</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>% Comissão</div>
           </div>
           {profissionais.map((p) => (
             <div key={p.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", opacity: p.active === false ? 0.6 : 1 }}>
-              <div style={{ padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ padding: 16, display: "grid", gridTemplateColumns: PROF_GRID_COLUMNS, alignItems: "center", gap: 14 }}>
                 <Avatar name={p.name} size={40} />
-                <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
-                <div style={{ flex: 1, fontSize: 13, color: T.text }}>{p.phone ? formatPhoneMask(p.phone) : "—"}</div>
-                <div style={{ flex: 1, fontSize: 13, color: T.text }}>{p.email}</div>
+                <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
+                <div style={{ fontSize: 13, color: T.text }}>{p.phone ? formatPhoneMask(p.phone) : "—"}</div>
+                <div style={{ fontSize: 13, color: T.text }}>{p.email}</div>
+                <div style={{ fontSize: 13, color: T.text }}>{p.commissionPercentage != null ? `${Number(p.commissionPercentage).toFixed(2).replace(".", ",")}%` : "—"}</div>
                 <ToggleSwitch on={p.active !== false} onClick={() => toggleAtivo(p)} />
                 <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
                 <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>

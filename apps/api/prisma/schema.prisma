@@ -46,6 +46,7 @@ model User {
   phone        String?  @db.VarChar(20)
   passwordHash String   @map("password_hash")
   active       Boolean  @default(true)
+  commissionPercentage Decimal? @map("commission_percentage") @db.Decimal(5, 2)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant Tenant? @relation(fields: [tenantId], references: [id])

@@ -76,6 +76,7 @@ describe('CRUD de professionals (/v1/professionals)', () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ role: 'barbeiro', email: professionalEmail });
     expect(res.body.passwordHash).toBeUndefined();
+    expect(res.body.commissionPercentage).toBeNull();
     professionalId = res.body.id;
 
     const login = await request(app.getHttpServer()).post('/v1/auth/login').send({
@@ -126,6 +127,51 @@ describe('CRUD de professionals (/v1/professionals)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Barbeiro Atualizado');
+  });
+
+  it('admin cria profissional já com % de comissão', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/v1/professionals')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Barbeiro Comissionado',
+        email: `comissao-${Date.now()}@test.local`,
+        password: 'senha-forte-123',
+        commissionPercentage: 12.5,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.commissionPercentage).toBe(12.5);
+  });
+
+  it('admin atualiza o % de comissão do profissional', async () => {
+    const res = await request(app.getHttpServer())
+      .patch(`/v1/professionals/${professionalId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ commissionPercentage: 20 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.commissionPercentage).toBe(20);
+  });
+
+  it('rejeita % de comissão fora do intervalo 0-100', async () => {
+    const tooHigh = await request(app.getHttpServer())
+      .patch(`/v1/professionals/${professionalId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ commissionPercentage: 150 });
+    expect(tooHigh.status).toBe(400);
+
+    const negative = await request(app.getHttpServer())
+      .patch(`/v1/professionals/${professionalId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ commissionPercentage: -5 });
+    expect(negative.status).toBe(400);
+
+    const tooManyDecimals = await request(app.getHttpServer())
+      .patch(`/v1/professionals/${professionalId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ commissionPercentage: 12.555 });
+    expect(tooManyDecimals.status).toBe(400);
   });
 
   it('admin de outro tenant não vê o profissional (RLS)', async () => {

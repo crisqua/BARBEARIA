@@ -13,8 +13,18 @@ const PUBLIC_SELECT = {
   email: true,
   phone: true,
   active: true,
+  commissionPercentage: true,
   createdAt: true,
 } as const;
+
+/** Prisma serializa Decimal como string (ex: "12.50") — normaliza para number|null na resposta da API. */
+function serializeProfessional<T extends { commissionPercentage: unknown }>(professional: T) {
+  return {
+    ...professional,
+    commissionPercentage:
+      professional.commissionPercentage != null ? Number(professional.commissionPercentage) : null,
+  };
+}
 
 @Injectable()
 export class ProfessionalsService {
@@ -27,10 +37,19 @@ export class ProfessionalsService {
     }
 
     const passwordHash = await hashPassword(dto.password);
-    return tx.user.create({
-      data: { tenantId, role: 'barbeiro', name: dto.name, email: dto.email, phone: dto.phone, passwordHash },
+    const professional = await tx.user.create({
+      data: {
+        tenantId,
+        role: 'barbeiro',
+        name: dto.name,
+        email: dto.email,
+        phone: dto.phone,
+        passwordHash,
+        commissionPercentage: dto.commissionPercentage,
+      },
       select: PUBLIC_SELECT,
     });
+    return serializeProfessional(professional);
   }
 
   async list(tx: TenantTx, page: number, pageSize: number) {
@@ -47,7 +66,7 @@ export class ProfessionalsService {
       tx.user.count({ where }),
     ]);
 
-    return { items, total, page, pageSize };
+    return { items: items.map(serializeProfessional), total, page, pageSize };
   }
 
   async findOne(tx: TenantTx, id: string) {
@@ -56,12 +75,13 @@ export class ProfessionalsService {
       select: PUBLIC_SELECT,
     });
     if (!professional) throw new NotFoundException();
-    return professional;
+    return serializeProfessional(professional);
   }
 
   async update(tx: TenantTx, id: string, dto: UpdateProfessionalDto) {
     const before = await this.findOne(tx, id);
-    const professional = await tx.user.update({ where: { id }, data: dto, select: PUBLIC_SELECT });
+    const updated = await tx.user.update({ where: { id }, data: dto, select: PUBLIC_SELECT });
+    const professional = serializeProfessional(updated);
 
     let affectedAppointmentsCount = 0;
     if (before.active && dto.active === false) {

@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // Sem email/senha aqui de propósito — troca de credencial não é escopo deste CRUD.
 export class UpdateProfessionalDto {
@@ -15,4 +15,10 @@ export class UpdateProfessionalDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  commissionPercentage?: number | null;
 }
