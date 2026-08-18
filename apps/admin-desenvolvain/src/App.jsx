@@ -722,7 +722,12 @@ const Onboarding = ({ setActive }) => {
                 <div key={key} style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, color: T.muted, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 6, background: form[key], border: `1px solid ${T.border}`, flexShrink: 0 }} />
+                    <input
+                      type="color"
+                      value={/^#[0-9A-Fa-f]{6}$/.test(form[key]) ? form[key] : "#000000"}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${T.border}`, flexShrink: 0, cursor: "pointer", padding: 0, background: "transparent" }}
+                    />
                     <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                       style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px", color: T.text, fontSize: 13, outline: "none" }} />
                   </div>
