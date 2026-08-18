@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
+import { formatCentsBRL, logActivity } from './activity-log.util';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 
@@ -15,12 +16,13 @@ export class AdminPaymentsService {
   private async assertTenantExists(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Barbearia não encontrada.');
+    return tenant;
   }
 
   async createForTenant(tenantId: string, dto: CreatePaymentDto) {
-    await this.assertTenantExists(tenantId);
-    return this.tenantContext.runInTenantContext(tenantId, (tx) =>
-      tx.payment.create({
+    const tenant = await this.assertTenantExists(tenantId);
+    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+      const payment = await tx.payment.create({
         data: {
           tenantId,
           subscriptionId: dto.subscriptionId,
@@ -29,23 +31,34 @@ export class AdminPaymentsService {
           status: dto.status ?? 'pending',
           paidAt: dto.status === 'paid' ? new Date() : undefined,
         },
-      }),
-    );
+      });
+      const action = payment.status === 'paid' ? 'payment_paid' : 'payment_registered';
+      const valor = formatCentsBRL(payment.amountCents);
+      await logActivity(tx, tenantId, action, `Pagamento de R$ ${valor} (${payment.period}) registrado para "${tenant.name}".`);
+      return payment;
+    });
   }
 
   async updateForTenant(tenantId: string, id: string, dto: UpdatePaymentDto) {
-    await this.assertTenantExists(tenantId);
+    const tenant = await this.assertTenantExists(tenantId);
     return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException('Pagamento não encontrado.');
 
-      return tx.payment.update({
+      const updated = await tx.payment.update({
         where: { id },
         data: {
           status: dto.status,
           paidAt: dto.status === 'paid' ? (existing.paidAt ?? new Date()) : existing.paidAt,
         },
       });
+
+      if (dto.status === 'paid' && existing.status !== 'paid') {
+        const valor = formatCentsBRL(updated.amountCents);
+        await logActivity(tx, tenantId, 'payment_paid', `Pagamento de R$ ${valor} (${updated.period}) confirmado para "${tenant.name}".`);
+      }
+
+      return updated;
     });
   }
 

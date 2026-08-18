@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
+import { formatCentsBRL, logActivity } from './activity-log.util';
 import { CreatePayoutDto } from './dto/create-payout.dto';
 import { UpdatePayoutDto } from './dto/update-payout.dto';
 
@@ -27,12 +28,13 @@ export class AdminPayoutsService {
   private async assertTenantExists(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new NotFoundException('Barbearia não encontrada.');
+    return tenant;
   }
 
   async createForTenant(tenantId: string, dto: CreatePayoutDto) {
-    await this.assertTenantExists(tenantId);
-    const payout = await this.tenantContext.runInTenantContext(tenantId, (tx) =>
-      tx.payout.create({
+    const tenant = await this.assertTenantExists(tenantId);
+    const payout = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+      const created = await tx.payout.create({
         data: {
           tenantId,
           period: dto.period,
@@ -41,18 +43,29 @@ export class AdminPayoutsService {
           netCents: computeNetCents(dto.grossRevenueCents, dto.feePct),
           status: dto.status ?? 'pending',
         },
-      }),
-    );
+      });
+      const action = created.status === 'paid' ? 'payout_paid' : 'payout_registered';
+      const valor = formatCentsBRL(created.netCents);
+      await logActivity(tx, tenantId, action, `Repasse de R$ ${valor} (${created.period}) registrado para "${tenant.name}".`);
+      return created;
+    });
     return serializePayout(payout);
   }
 
   async updateForTenant(tenantId: string, id: string, dto: UpdatePayoutDto) {
-    await this.assertTenantExists(tenantId);
+    const tenant = await this.assertTenantExists(tenantId);
     const payout = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const existing = await tx.payout.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException('Repasse não encontrado.');
 
-      return tx.payout.update({ where: { id }, data: { status: dto.status } });
+      const updated = await tx.payout.update({ where: { id }, data: { status: dto.status } });
+
+      if (dto.status === 'paid' && existing.status !== 'paid') {
+        const valor = formatCentsBRL(updated.netCents);
+        await logActivity(tx, tenantId, 'payout_paid', `Repasse de R$ ${valor} (${updated.period}) pago para "${tenant.name}".`);
+      }
+
+      return updated;
     });
     return serializePayout(payout);
   }

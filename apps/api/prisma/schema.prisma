@@ -73,6 +73,7 @@ model Tenant {
   subscription         Subscription?
   payments             Payment[]
   payouts              Payout[]
+  activities           PlatformActivity[]
 
   @@map("tenants")
 }
@@ -132,6 +133,23 @@ model Payout {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("payouts")
+}
+
+// Feed de eventos pra tela "Atividade recente" do Dashboard — dado do tenant
+// (RLS normal, mesma decisão de Subscription/Payment/Payout). Só registra
+// ações que já existem de verdade (tenant criado/suspenso, plano trocado,
+// pagamento/repasse registrado) — nada de "trial expirado" ou "suporte
+// aberto", que exigiriam funcionalidade que ainda não existe.
+model PlatformActivity {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  action      String   @db.VarChar(50)
+  description String   @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("platform_activities")
 }
 
 model User {

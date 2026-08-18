@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { logActivity } from './activity-log.util';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 
 @Injectable()
@@ -60,31 +61,50 @@ export class AdminSubscriptionsService {
 
   /** Upsert — tenants criados antes do Sprint 5 não têm assinatura ainda. */
   async upsertForTenant(tenantId: string, dto: UpdateSubscriptionDto) {
-    await this.assertTenantExists(tenantId);
+    const tenant = await this.assertTenantExists(tenantId);
 
+    let newPlan: { name: string } | null = null;
     if (dto.planId) {
-      const plan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
-      if (!plan) throw new NotFoundException('Plano não encontrado.');
+      newPlan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
+      if (!newPlan) throw new NotFoundException('Plano não encontrado.');
     }
 
     return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
-      const existing = await tx.subscription.findUnique({ where: { tenantId } });
+      const existing = await tx.subscription.findUnique({ where: { tenantId }, include: { plan: true } });
 
       if (!existing) {
         if (!dto.planId) {
           throw new BadRequestException('Essa barbearia ainda não tem assinatura — informe planId pra criar uma.');
         }
-        return tx.subscription.create({
+        const created = await tx.subscription.create({
           data: { tenantId, planId: dto.planId, status: dto.status ?? 'active' },
           include: { plan: true },
         });
+        await logActivity(
+          tx,
+          tenantId,
+          'subscription_created',
+          `Assinatura criada para "${tenant.name}" (plano ${created.plan.name}).`,
+        );
+        return created;
       }
 
-      return tx.subscription.update({
+      const updated = await tx.subscription.update({
         where: { tenantId },
         data: { planId: dto.planId, status: dto.status },
         include: { plan: true },
       });
+
+      if (dto.planId && dto.planId !== existing.planId) {
+        await logActivity(
+          tx,
+          tenantId,
+          'plan_changed',
+          `"${tenant.name}" trocou de plano: ${existing.plan.name} → ${updated.plan.name}.`,
+        );
+      }
+
+      return updated;
     });
   }
 }

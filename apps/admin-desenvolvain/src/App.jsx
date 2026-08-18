@@ -5,6 +5,7 @@ import {
   createTenantPayment,
   createTenantPayout,
   getAccessToken,
+  getActivity,
   getDashboardOverview,
   getSettings,
   getTenant,
@@ -320,28 +321,47 @@ const Sidebar = ({ active, setActive, user, onLogout }) => (
 // ────────────────────────────────────────────────────────
 // TELA: DASHBOARD
 // ────────────────────────────────────────────────────────
-// Dado de exemplo — vira real só se investirmos numa tabela de auditoria (fora
-// do escopo do plano de sprints atual, ver admin-desenvolvain.md seção 7).
-const atividadesExemplo = [
-  { acao: "Nova barbearia criada", detalhe: "Studio Cuts", tempo: "há 2h" },
-  { acao: "Plano atualizado", detalhe: "Dom Barbeiro → Pro", tempo: "há 5h" },
-  { acao: "Trial expirado", detalhe: "Vintage Barber", tempo: "há 1d" },
-  { acao: "Pagamento recebido", detalhe: "Barberaria · R$ 299", tempo: "há 2d" },
-  { acao: "Suporte aberto", detalhe: "Corte Fino → agenda", tempo: "há 2d" },
-];
+// Rótulo amigável por tipo de evento — só as ações que o backend realmente
+// grava (ver PlatformActivity/activity-log.util.ts). "Trial expirado" e
+// "Suporte aberto" ficam fora de propósito: nenhuma das duas tem regra de
+// negócio implementada ainda (ver admin-desenvolvain.md).
+const ATIVIDADE_LABEL = {
+  tenant_created: "Nova barbearia criada",
+  tenant_suspended: "Barbearia suspensa",
+  tenant_reactivated: "Barbearia reativada",
+  subscription_created: "Assinatura criada",
+  plan_changed: "Plano atualizado",
+  payment_registered: "Pagamento registrado",
+  payment_paid: "Pagamento recebido",
+  payout_registered: "Repasse registrado",
+  payout_paid: "Repasse pago",
+};
+
+const tempoRelativo = (iso) => {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d`;
+};
 
 const Dashboard = ({ setActive }) => {
   const [overview, setOverview] = useState(null);
   const [tenants, setTenants] = useState([]);
+  const [atividades, setAtividades] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getDashboardOverview(), listTenants()])
-      .then(([ov, tenantsRes]) => {
+    Promise.all([getDashboardOverview(), listTenants(), getActivity(8)])
+      .then(([ov, tenantsRes, activityRes]) => {
         setOverview(ov);
         setTenants(
           [...tenantsRes.items].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5),
         );
+        setAtividades(activityRes);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -400,18 +420,23 @@ const Dashboard = ({ setActive }) => {
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Atividade recente</div>
-            <Badge color={T.mutedHi} small>exemplo</Badge>
           </div>
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-            {atividadesExemplo.map((a, i) => (
-              <div key={i} style={{ padding: "12px 16px", borderBottom: i < atividadesExemplo.length - 1 ? `1px solid ${T.border}22` : "none" }}>
-                <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{a.acao}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-                  <span style={{ fontSize: 11, color: T.lime }}>{a.detalhe}</span>
-                  <span style={{ fontSize: 11, color: T.muted }}>{a.tempo}</span>
+            {loading ? (
+              <div style={{ padding: "12px 16px", fontSize: 12, color: T.muted }}>Carregando…</div>
+            ) : atividades.length === 0 ? (
+              <div style={{ padding: "12px 16px", fontSize: 12, color: T.muted }}>Nenhuma atividade ainda.</div>
+            ) : (
+              atividades.map((a, i) => (
+                <div key={a.id} style={{ padding: "12px 16px", borderBottom: i < atividades.length - 1 ? `1px solid ${T.border}22` : "none" }}>
+                  <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{ATIVIDADE_LABEL[a.action] || a.action}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, gap: 8 }}>
+                    <span style={{ fontSize: 11, color: T.lime, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.description}</span>
+                    <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{tempoRelativo(a.createdAt)}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

@@ -15,14 +15,15 @@ Backend usado: `/v1/admin/*`, sempre atrás de `@Roles('super_admin')`, sem `Ten
 
 ## 2. Status atual (resumo)
 
-**Concluído e em produção local** (Sprints 1–6 + uma feature extra fora da sequência original):
+**Concluído e em produção local** (Sprints 1–6 + duas features extra fora da sequência original):
 login de super_admin, CRUD de Barbearias, Onboarding completo (cria tenant + admin + assinatura numa
 transação), Dashboard com métricas reais (tenants, barbeiros, agendamentos, MRR, trials), Usuários
 cross-tenant, catálogo de Planos (trial/pro/enterprise), Assinaturas, Financeiro (MRR/ARR real +
 registro manual de pagamentos) e Repasses (registro manual com cálculo de líquido). Configurações da
 Plataforma também foi conectada (fora da sequência original de sprints, puxada pra frente porque a
 tela já estava com bug visível) — domínio/e-mail/webhook/trial editáveis, e as cores de
-fundo/acento re-temeiam o painel inteiro ao vivo.
+fundo/acento re-temeiam o painel inteiro ao vivo. Atividade recente do Dashboard também foi trocada
+de dado de exemplo pra feed real (`PlatformActivity`).
 
 **Ainda mock/não construído:** Suporte, Releases, impersonação ("Acessar como admin"), deploy em
 produção.
@@ -50,6 +51,7 @@ compartilhado, não Context — funciona porque todo componente do arquivo lê `
 | `Payment` | Sim | **Normal** | ✅ Sprint 6 |
 | `Payout` (Repasse) | Sim | **Normal** | ✅ Sprint 6 |
 | `PlatformSettings` | Não | Isenta (singleton global) | ✅ feature extra |
+| `PlatformActivity` | Sim | **Normal** | ✅ feature extra |
 | `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 8 |
 | `Release` | Não | Isenta (planejado) | ⏳ Sprint 9 (parcial) |
 
@@ -79,6 +81,7 @@ GET   /v1/admin/subscriptions               GET/PATCH /v1/admin/tenants/:tenantI
 GET   /v1/admin/payments                    POST/PATCH /v1/admin/tenants/:tenantId/payments[/:id]
 GET   /v1/admin/payouts                     POST/PATCH /v1/admin/tenants/:tenantId/payouts[/:id]
 GET   /v1/admin/settings                    PATCH /v1/admin/settings
+GET   /v1/admin/activity                    — feed cross-tenant, ?limit= (padrão 10, máx 50)
 ```
 
 ## 6. Sprints
@@ -127,6 +130,17 @@ pra frente do Sprint 9 original porque a tela já estava visível e com bug (cli
   JPEG/SVG com preview e validação de tamanho (2MB). **Upload real pra armazenamento na nuvem ainda
   não existe** (Supabase Storage não configurado) — a tela deixa isso explícito, não finge persistir.
 
+### ✅ Feature extra (fora da sequência) — Atividade recente
+`PlatformActivity` (RLS normal, mesma categoria de `Subscription`/`Payment`/`Payout` — ver seção 4).
+Eventos gravados na mesma transação da ação que os originou (nunca um passo separado que pode
+dessincronizar): `tenant_created`/`tenant_suspended`/`tenant_reactivated` (`AdminTenantsService`),
+`subscription_created`/`plan_changed` (`AdminSubscriptionsService`), `payment_registered`/
+`payment_paid` (`AdminPaymentsService`), `payout_registered`/`payout_paid` (`AdminPayoutsService`).
+Helper único (`activity-log.util.ts`) grava e formata os valores em R$ pt-BR. Leitura cross-tenant
+soma por tenant via `TenantContextService`, mesmo padrão do resto do painel. **Ficam de fora de
+propósito:** "Trial expirado" e "Suporte aberto" — nenhum dos dois tem regra de negócio ou módulo
+implementado ainda (cron de expiração e `SupportTicket` do Sprint 8, respectivamente).
+
 ### ⏳ Sprint 7 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
@@ -148,9 +162,14 @@ atualizado na API.
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
-líquido do repasse, upsert de assinatura, validação de hex, etc.) — ver `apps/api/test/admin/`.
-Suíte completa: 119/120 (a única falha é `connection-pool-leak.e2e-spec.ts`, flakiness pré-existente
-do ambiente local, confirmada via `git stash` como não relacionada a nenhuma mudança deste projeto).
+líquido do repasse, upsert de assinatura, validação de hex, geração de evento de atividade, etc.) —
+ver `apps/api/test/admin/`. Suíte completa: 121/123 rodando com `--runInBand` (a suíte cresce demais
+em paralelo pro pool de conexões do Postgres local — cada `beforeAll` abre um Nest app + pool próprio,
+então rodar tudo em paralelo derruba testes por timeout de transação sem relação com o código). As 2
+falhas restantes são pré-existentes e não relacionadas a este trabalho: `connection-pool-leak.e2e-spec.ts`
+(flakiness pré-existente do ambiente local, confirmada via `git stash`) e `admin-plans.e2e-spec.ts`
+(assume banco limpo, mas o banco de dev local já tem os planos reais `pro`/`enterprise` cadastrados
+pelo uso manual do painel — colisão de dado de ambiente, não bug).
 
 ## 8. Riscos ainda vigentes
 
@@ -164,4 +183,4 @@ do ambiente local, confirmada via `git stash` como não relacionada a nenhuma mu
 
 ---
 
-*Atualizado em Agosto/2026 — Painel Master DesenvolvaIN.*
+*Atualizado em 18/08/2026 — Painel Master DesenvolvaIN.*

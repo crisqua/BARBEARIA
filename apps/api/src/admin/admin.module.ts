@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { AdminController } from './admin.controller';
+import { AdminActivityController } from './admin-activity.controller';
+import { AdminActivityService } from './admin-activity.service';
 import { AdminDashboardController } from './admin-dashboard.controller';
 import { AdminDashboardService } from './admin-dashboard.service';
 import { AdminPaymentsController } from './admin-payments.controller';
@@ -30,6 +32,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminPaymentsController,
     AdminPayoutsController,
     AdminSettingsController,
+    AdminActivityController,
   ],
   providers: [
     AdminTenantsService,
@@ -40,6 +43,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminPaymentsService,
     AdminPayoutsService,
     AdminSettingsService,
+    AdminActivityService,
   ],
 })
 export class AdminModule {}

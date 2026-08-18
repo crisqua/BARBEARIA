@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client';
 import { hashPassword } from '../common/password.util';
 import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantContextService } from '../prisma/tenant-context.service';
 import { tenantBrandingCacheKey } from '../tenants-public/tenant-branding-cache-key';
+import { logActivity } from './activity-log.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
@@ -12,6 +14,7 @@ export class AdminTenantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly tenantContext: TenantContextService,
   ) {}
 
   /**
@@ -55,6 +58,8 @@ export class AdminTenantsService {
           data: { tenantId: tenant.id, planId: dto.planId },
         });
 
+        await logActivity(tx, tenant.id, 'tenant_created', `Barbearia "${tenant.name}" criada (plano ${plan.name}).`);
+
         return { tenant, admin: { id: admin.id, email: admin.email }, subscription };
       });
     } catch (err) {
@@ -90,6 +95,15 @@ export class AdminTenantsService {
 
     const updated = await this.prisma.tenant.update({ where: { id }, data: dto });
     await this.cache.del(tenantBrandingCacheKey(updated.slug));
+
+    if (dto.status && dto.status !== existing.status) {
+      const action = dto.status === 'suspended' ? 'tenant_suspended' : 'tenant_reactivated';
+      const label = dto.status === 'suspended' ? 'suspensa' : 'reativada';
+      await this.tenantContext.runInTenantContext(id, (tx) =>
+        logActivity(tx, id, action, `Barbearia "${updated.name}" ${label}.`),
+      );
+    }
+
     return updated;
   }
 }

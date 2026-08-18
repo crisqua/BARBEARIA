@@ -137,3 +137,6 @@ export const updateTenantPayout = (tenantId, id, data) =>
 export const getSettings = () => apiFetch("/v1/admin/settings");
 
 export const updateSettings = (data) => apiFetch("/v1/admin/settings", { method: "PATCH", body: data });
+
+// ─── Atividade recente ───────────────────────────────────
+export const getActivity = (limit = 10) => apiFetch(`/v1/admin/activity?limit=${limit}`);
