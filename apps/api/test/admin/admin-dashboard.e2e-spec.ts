@@ -67,6 +67,9 @@ describe('Dashboard do Super Admin (/v1/admin/dashboard)', () => {
       },
       barbersActive: expect.any(Number),
       appointmentsThisMonth: expect.any(Number),
+      mrrCents: expect.any(Number),
+      trialsAtivos: expect.any(Number),
+      pendingPayments: expect.any(Number),
     });
   });
 
@@ -87,6 +90,31 @@ describe('Dashboard do Super Admin (/v1/admin/dashboard)', () => {
       expect(after.body.barbersActive).toBe(before.body.barbersActive + 1);
     } finally {
       await cleanupTenantWithUser(prisma, tenantContext, novoTenant.tenantId);
+    }
+  });
+
+  it('reflete uma assinatura ativa no MRR e nas trials ativas', async () => {
+    const plan = await prisma.plan.create({ data: { code: `t${Date.now()}`.slice(0, 20), name: 'Trial teste', priceCents: 5000 } });
+
+    const before = await request(app.getHttpServer())
+      .get('/v1/admin/dashboard/overview')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+
+    await tenantContext.runInTenantContext(seededTenant.tenantId, (tx) =>
+      tx.subscription.create({ data: { tenantId: seededTenant.tenantId, planId: plan.id, status: 'active' } }),
+    );
+
+    try {
+      const after = await request(app.getHttpServer())
+        .get('/v1/admin/dashboard/overview')
+        .set('Authorization', `Bearer ${superAdminToken}`);
+
+      expect(after.body.mrrCents).toBe(before.body.mrrCents + 5000);
+    } finally {
+      await tenantContext.runInTenantContext(seededTenant.tenantId, (tx) =>
+        tx.subscription.deleteMany({ where: { tenantId: seededTenant.tenantId } }),
+      );
+      await prisma.plan.delete({ where: { id: plan.id } });
     }
   });
 });

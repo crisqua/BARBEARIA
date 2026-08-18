@@ -34,19 +34,29 @@ export class AdminDashboardService {
     const perTenant = await Promise.all(
       tenants.map(({ id }) =>
         this.tenantContext.runInTenantContext(id, async (tx) => {
-          const [barbers, appointments] = await Promise.all([
+          const [barbers, appointments, subscription, pendingPayments] = await Promise.all([
             tx.user.count({ where: { role: 'barbeiro', active: true } }),
             tx.appointment.count({ where: { startsAt: { gte: monthStart, lt: monthEnd } } }),
+            tx.subscription.findUnique({ where: { tenantId: id }, include: { plan: true } }),
+            tx.payment.count({ where: { status: 'pending' } }),
           ]);
-          return { barbers, appointments };
+          return { barbers, appointments, subscription, pendingPayments };
         }),
       ),
     );
+
+    const assinaturasAtivas = perTenant
+      .map((t) => t.subscription)
+      .filter((s): s is NonNullable<typeof s> => !!s && s.status === 'active');
 
     return {
       tenants: { total: totalTenants, active: activeTenants, suspended: suspendedTenants },
       barbersActive: perTenant.reduce((sum, t) => sum + t.barbers, 0),
       appointmentsThisMonth: perTenant.reduce((sum, t) => sum + t.appointments, 0),
+      // Só soma — nenhuma regra de negócio nova (Sprint 6, ver admin-desenvolvain.md).
+      mrrCents: assinaturasAtivas.reduce((sum, s) => sum + (s.plan.priceCents ?? 0), 0),
+      trialsAtivos: assinaturasAtivas.filter((s) => s.plan.code === 'trial').length,
+      pendingPayments: perTenant.reduce((sum, t) => sum + t.pendingPayments, 0),
     };
   }
 }

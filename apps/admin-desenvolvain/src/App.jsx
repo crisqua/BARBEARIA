@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import {
   createPlan,
   createTenant,
+  createTenantPayment,
+  createTenantPayout,
   getAccessToken,
   getDashboardOverview,
   getTenant,
   getUsers,
+  listPayments,
+  listPayouts,
   listPlans,
   listSubscriptions,
   listTenants,
@@ -14,6 +18,8 @@ import {
   setAccessToken,
   updatePlan,
   updateTenant,
+  updateTenantPayment,
+  updateTenantPayout,
   updateTenantSubscription,
   whoami,
 } from "./api/client";
@@ -316,7 +322,7 @@ const Dashboard = ({ setActive }) => {
 
       {/* Stats */}
       <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-        <Stat label="MRR Total" value="—" sub="chega no Sprint 6" />
+        <Stat label="MRR Total" value={overview ? formatMoney(overview.mrrCents) : "…"} />
         <Stat
           label="Barbearias"
           value={overview ? String(overview.tenants.total) : "…"}
@@ -384,6 +390,7 @@ const Dashboard = ({ setActive }) => {
 // TELA: BARBEARIAS (gestão detalhada)
 // ────────────────────────────────────────────────────────
 const formatDate = (iso) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+const formatMoney = (cents) => `R$ ${(cents / 100).toFixed(2).replace(".", ",")}`;
 
 const statusBadge = (status) => ({
   color: status === "active" ? T.success : T.danger,
@@ -936,62 +943,118 @@ const Planos = () => {
 // ────────────────────────────────────────────────────────
 // TELA: FINANCEIRO / MRR
 // ────────────────────────────────────────────────────────
+const emptyPaymentForm = { tenantId: "", valorReais: "", period: "", status: "pending" };
+
 const Financeiro = () => {
-  const [tab, setTab] = useState("mrr");
-  const receitas = [
-    { tenant: "Barberaria", plano: "Pro", valor: "R$ 299,00", data: "01/06/2025", status: "pago" },
-    { tenant: "Corte Fino", plano: "Starter", valor: "R$ 99,00", data: "03/06/2025", status: "pago" },
-    { tenant: "Dom Barbeiro", plano: "Pro", valor: "R$ 299,00", data: "05/06/2025", status: "pago" },
-    { tenant: "Studio Cuts", plano: "Trial", valor: "—", data: "—", status: "trial" },
-    { tenant: "Vintage Barber", plano: "Starter", valor: "R$ 99,00", data: "10/05/2025", status: "inadimplente" },
-  ];
-  const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"];
-  const mrr =    [199,   199,   298,   398,   697,  796];
-  const max = Math.max(...mrr);
+  const [overview, setOverview] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyPaymentForm);
+  const [saving, setSaving] = useState(false);
+  const [actingId, setActingId] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = () =>
+    Promise.all([getDashboardOverview(), listPayments(), listTenants()]).then(([ov, paymentsRes, tenantsRes]) => {
+      setOverview(ov);
+      setPayments(paymentsRes.items);
+      setTenants(tenantsRes.items);
+    });
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+
+  const abrirForm = () => { setForm(emptyPaymentForm); setError(""); setShowForm(true); };
+
+  const registrar = async () => {
+    setError("");
+    if (!form.tenantId) { setError("Escolha uma barbearia."); return; }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) { setError("Período deve estar no formato AAAA-MM (ex: 2026-08)."); return; }
+    const amountCents = Math.round(parseFloat(form.valorReais.replace(",", ".")) * 100);
+    if (Number.isNaN(amountCents) || amountCents <= 0) { setError("Valor inválido."); return; }
+
+    setSaving(true);
+    try {
+      await createTenantPayment(form.tenantId, { amountCents, period: form.period, status: form.status });
+      setShowForm(false);
+      await load();
+    } catch (e) {
+      setError(e.message || "Não foi possível registrar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const marcarPago = async (payment) => {
+    setActingId(payment.id);
+    try {
+      await updateTenantPayment(payment.tenantId, payment.id, { status: "paid" });
+      await load();
+    } finally {
+      setActingId(null);
+    }
+  };
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Receita & MRR</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Acompanhamento financeiro da plataforma</div>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Receita & MRR</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Acompanhamento financeiro da plataforma</div>
+        </div>
+        <Btn size="sm" onClick={abrirForm}>+ Registrar pagamento</Btn>
       </div>
       <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-        <Stat label="MRR Atual" value="R$ 796" sub="+14% vs mai" trend="up" />
-        <Stat label="ARR Projetado" value="R$ 9.552" sub="anualizado" />
-        <Stat label="Inadimplentes" value="1" sub="R$ 99 em aberto" accent={T.danger} />
-        <Stat label="Trials ativos" value="1" sub="conversão pendente" accent={T.warning} />
-      </div>
-      <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: `1px solid ${T.border}` }}>
-        {[["mrr", "Evolução MRR"], ["pagamentos", "Pagamentos"]].map(([id, label]) => (
-          <div key={id} onClick={() => setTab(id)} style={{ padding: "10px 20px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: tab === id ? T.lime : T.muted, borderBottom: tab === id ? `2px solid ${T.lime}` : "2px solid transparent" }}>{label}</div>
-        ))}
+        <Stat label="MRR Atual" value={overview ? formatMoney(overview.mrrCents) : "…"} />
+        <Stat label="ARR Projetado" value={overview ? formatMoney(overview.mrrCents * 12) : "…"} sub="anualizado" />
+        <Stat label="Trials ativos" value={overview ? String(overview.trialsAtivos) : "…"} accent={T.warning} />
+        <Stat label="Pagamentos pendentes" value={overview ? String(overview.pendingPayments) : "…"} accent={overview?.pendingPayments > 0 ? T.danger : T.success} />
       </div>
 
-      {tab === "mrr" && (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 20 }}>MRR Mensal — 2025</div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 160 }}>
-            {meses.map((m, i) => (
-              <div key={m} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <div style={{ fontSize: 11, color: T.lime, fontWeight: 700 }}>R${mrr[i]}</div>
-                <div style={{ width: "100%", background: i === meses.length - 1 ? T.lime : T.lime + "50", borderRadius: "6px 6px 0 0", height: `${(mrr[i] / max) * 120}px` }} />
-                <div style={{ fontSize: 11, color: T.muted }}>{m}</div>
-              </div>
-            ))}
+      {showForm && (
+        <div style={{ background: T.card, border: `1.5px solid ${T.lime}55`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.lime, marginBottom: 16 }}>Registrar pagamento</div>
+          {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+            <div style={{ flex: 2, minWidth: 180 }}>
+              <Select label="Barbearia" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
+                options={[{ value: "", label: "Selecione…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]} />
+            </div>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <Input label="Valor (R$)" value={form.valorReais} onChange={(e) => setForm((f) => ({ ...f, valorReais: e.target.value }))} placeholder="299,00" />
+            </div>
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <Input label="Período (AAAA-MM)" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="2026-08" />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                options={[{ value: "pending", label: "Pendente" }, { value: "paid", label: "Pago" }]} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div onClick={saving ? undefined : registrar} style={{ background: T.lime, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Registrar"}</div>
+            <div onClick={() => setShowForm(false)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
           </div>
         </div>
       )}
 
-      {tab === "pagamentos" && (
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : payments.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Nenhum pagamento registrado ainda.</div>
+      ) : (
         <Table
-          cols={["Barbearia", "Plano", "Valor", "Data", "Status"]}
-          rows={receitas.map((r, i) => (
-            <TRow key={i} last={i === receitas.length - 1} cells={[
-              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{r.tenant}</span>,
-              <Badge color={r.plano === "Pro" ? T.lime : T.mutedHi}>{r.plano}</Badge>,
-              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{r.valor}</span>,
-              <span style={{ fontSize: 13, color: T.muted }}>{r.data}</span>,
-              <Badge color={r.status === "pago" ? T.success : r.status === "trial" ? T.warning : T.danger}>{r.status}</Badge>,
+          cols={["Barbearia", "Valor", "Período", "Status", ""]}
+          rows={payments.map((p, i) => (
+            <TRow key={p.id} last={i === payments.length - 1} cells={[
+              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{p.tenantName}</span>,
+              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{formatMoney(p.amountCents)}</span>,
+              <span style={{ fontSize: 13, color: T.muted }}>{p.period}</span>,
+              <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>,
+              p.status === "pending" ? (
+                <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
+              ) : null,
             ]} />
           ))}
         />
@@ -1276,39 +1339,134 @@ const Config = () => (
 // ────────────────────────────────────────────────────────
 // TELA: REPASSES
 // ────────────────────────────────────────────────────────
+const emptyPayoutForm = { tenantId: "", period: "", grossReais: "", feePct: "" };
+
 const Repasses = () => {
-  const repasses = [
-    { barbearia: "Barberaria", periodo: "Maio 2025", receita: "R$ 4.340", taxa: "15%", repasse: "R$ 3.689", status: "pago" },
-    { barbearia: "Dom Barbeiro", periodo: "Maio 2025", receita: "R$ 3.100", taxa: "15%", repasse: "R$ 2.635", status: "pago" },
-    { barbearia: "Corte Fino", periodo: "Maio 2025", receita: "R$ 1.800", taxa: "15%", repasse: "R$ 1.530", status: "pendente" },
-  ];
+  const [payouts, setPayouts] = useState([]);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyPayoutForm);
+  const [saving, setSaving] = useState(false);
+  const [actingId, setActingId] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = () =>
+    Promise.all([listPayouts(), listTenants()]).then(([payoutsRes, tenantsRes]) => {
+      setPayouts(payoutsRes.items);
+      setTenants(tenantsRes.items);
+    });
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+
+  const abrirForm = () => { setForm(emptyPayoutForm); setError(""); setShowForm(true); };
+
+  const grossCentsPreview = Math.round(parseFloat((form.grossReais || "0").replace(",", ".")) * 100) || 0;
+  const feePctPreview = parseFloat((form.feePct || "0").replace(",", ".")) || 0;
+  const netCentsPreview = Math.round(grossCentsPreview * (1 - feePctPreview / 100));
+
+  const registrar = async () => {
+    setError("");
+    if (!form.tenantId) { setError("Escolha uma barbearia."); return; }
+    if (!form.period || form.period.length < 2) { setError("Informe o período (ex: Agosto 2026)."); return; }
+    if (grossCentsPreview <= 0) { setError("Receita bruta inválida."); return; }
+    if (feePctPreview < 0 || feePctPreview > 100) { setError("Taxa deve estar entre 0 e 100."); return; }
+
+    setSaving(true);
+    try {
+      await createTenantPayout(form.tenantId, { period: form.period, grossRevenueCents: grossCentsPreview, feePct: feePctPreview });
+      setShowForm(false);
+      await load();
+    } catch (e) {
+      setError(e.message || "Não foi possível registrar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const marcarPago = async (payout) => {
+    setActingId(payout.id);
+    try {
+      await updateTenantPayout(payout.tenantId, payout.id, { status: "paid" });
+      await load();
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const totalBruto = payouts.reduce((s, p) => s + p.grossRevenueCents, 0);
+  const totalFee = payouts.reduce((s, p) => s + (p.grossRevenueCents - p.netCents), 0);
+  const aRepassar = payouts.filter((p) => p.status === "pending").reduce((s, p) => s + p.netCents, 0);
+
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Repasses</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Controle de repasse de receita às barbearias (fee da plataforma)</div>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Repasses</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Registro manual de repasse de receita às barbearias</div>
+        </div>
+        <Btn size="sm" onClick={abrirForm}>+ Registrar repasse</Btn>
       </div>
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-        <Stat label="Total recebido" value="R$ 9.240" sub="Maio 2025" />
-        <Stat label="Fee da plataforma" value="R$ 1.386" sub="15% médio" />
-        <Stat label="A repassar" value="R$ 1.530" sub="Corte Fino pendente" accent={T.warning} />
+        <Stat label="Total bruto registrado" value={formatMoney(totalBruto)} />
+        <Stat label="Fee acumulado" value={formatMoney(totalFee)} />
+        <Stat label="A repassar (pendente)" value={formatMoney(aRepassar)} accent={aRepassar > 0 ? T.warning : T.success} />
       </div>
-      <Table
-        cols={["Barbearia", "Período", "Receita bruta", "Taxa", "Repasse líquido", "Status"]}
-        rows={repasses.map((r, i) => (
-          <TRow key={i} last={i === repasses.length - 1} cells={[
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Avatar name={r.barbearia} size={28} />
-              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{r.barbearia}</span>
-            </div>,
-            <span style={{ fontSize: 12, color: T.muted }}>{r.periodo}</span>,
-            <span style={{ fontSize: 13, color: T.text }}>{r.receita}</span>,
-            <Badge color={T.mutedHi}>{r.taxa}</Badge>,
-            <span style={{ fontSize: 13, color: T.lime, fontWeight: 700 }}>{r.repasse}</span>,
-            <Badge color={r.status === "pago" ? T.success : T.warning}>{r.status}</Badge>,
-          ]} />
-        ))}
-      />
+
+      {showForm && (
+        <div style={{ background: T.card, border: `1.5px solid ${T.lime}55`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.lime, marginBottom: 16 }}>Registrar repasse</div>
+          {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={{ flex: 2, minWidth: 180 }}>
+              <Select label="Barbearia" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
+                options={[{ value: "", label: "Selecione…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]} />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <Input label="Período" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="Agosto 2026" />
+            </div>
+            <div style={{ flex: 1, minWidth: 130 }}>
+              <Input label="Receita bruta (R$)" value={form.grossReais} onChange={(e) => setForm((f) => ({ ...f, grossReais: e.target.value }))} placeholder="4.340,00" />
+            </div>
+            <div style={{ flex: 1, minWidth: 100 }}>
+              <Input label="Taxa (%)" value={form.feePct} onChange={(e) => setForm((f) => ({ ...f, feePct: e.target.value }))} placeholder="15" />
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: T.muted, marginBottom: 16 }}>
+            Líquido calculado: <strong style={{ color: T.lime }}>{formatMoney(netCentsPreview)}</strong>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div onClick={saving ? undefined : registrar} style={{ background: T.lime, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Registrar"}</div>
+            <div onClick={() => setShowForm(false)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : payouts.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Nenhum repasse registrado ainda.</div>
+      ) : (
+        <Table
+          cols={["Barbearia", "Período", "Receita bruta", "Taxa", "Repasse líquido", "Status", ""]}
+          rows={payouts.map((p, i) => (
+            <TRow key={p.id} last={i === payouts.length - 1} cells={[
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar name={p.tenantName} size={28} />
+                <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{p.tenantName}</span>
+              </div>,
+              <span style={{ fontSize: 12, color: T.muted }}>{p.period}</span>,
+              <span style={{ fontSize: 13, color: T.text }}>{formatMoney(p.grossRevenueCents)}</span>,
+              <Badge color={T.mutedHi}>{p.feePct}%</Badge>,
+              <span style={{ fontSize: 13, color: T.lime, fontWeight: 700 }}>{formatMoney(p.netCents)}</span>,
+              <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>,
+              p.status === "pending" ? (
+                <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
+              ) : null,
+            ]} />
+          ))}
+        />
+      )}
     </div>
   );
 };

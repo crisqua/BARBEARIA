@@ -3,6 +3,10 @@ import { AuthModule } from '../auth/auth.module';
 import { AdminController } from './admin.controller';
 import { AdminDashboardController } from './admin-dashboard.controller';
 import { AdminDashboardService } from './admin-dashboard.service';
+import { AdminPaymentsController } from './admin-payments.controller';
+import { AdminPaymentsService } from './admin-payments.service';
+import { AdminPayoutsController } from './admin-payouts.controller';
+import { AdminPayoutsService } from './admin-payouts.service';
 import { AdminPlansController } from './admin-plans.controller';
 import { AdminPlansService } from './admin-plans.service';
 import { AdminSubscriptionsController } from './admin-subscriptions.controller';
@@ -21,6 +25,8 @@ import { AdminUsersService } from './admin-users.service';
     AdminUsersController,
     AdminPlansController,
     AdminSubscriptionsController,
+    AdminPaymentsController,
+    AdminPayoutsController,
   ],
   providers: [
     AdminTenantsService,
@@ -28,6 +34,8 @@ import { AdminUsersService } from './admin-users.service';
     AdminUsersService,
     AdminPlansService,
     AdminSubscriptionsService,
+    AdminPaymentsService,
+    AdminPayoutsService,
   ],
 })
 export class AdminModule {}

@@ -54,6 +54,8 @@ model Tenant {
   workingHours         WorkingHour[]
   appointments         Appointment[]
   subscription         Subscription?
+  payments             Payment[]
+  payouts              Payout[]
 
   @@map("tenants")
 }
@@ -73,7 +75,46 @@ model Subscription {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   plan   Plan   @relation(fields: [planId], references: [id])
 
+  payments Payment[]
+
   @@map("subscriptions")
+}
+
+// Registro manual de cobrança da assinatura (Sprint 6) — sem gateway de
+// pagamento integrado, o Super Admin registra o que já aconteceu. RLS
+// normal, mesmo raciocínio de Subscription.
+model Payment {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  subscriptionId String?   @map("subscription_id") @db.Uuid
+  amountCents    Int       @map("amount_cents")
+  period         String    @db.VarChar(20)
+  status         String    @default("pending") @db.VarChar(20)
+  paidAt         DateTime? @map("paid_at") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@map("payments")
+}
+
+// Repasse de receita da plataforma pra barbearia (Sprint 6) — cálculo é só
+// aritmética sobre valores digitados pelo Super Admin (bruto e taxa%), sem
+// detecção automática de receita nem regra de taxa fixa. RLS normal.
+model Payout {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  period            String   @db.VarChar(50)
+  grossRevenueCents Int      @map("gross_revenue_cents")
+  feePct            Decimal  @map("fee_pct") @db.Decimal(5, 2)
+  netCents          Int      @map("net_cents")
+  status            String   @default("pending") @db.VarChar(20)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("payouts")
 }
 
 model User {

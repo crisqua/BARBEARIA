@@ -108,3 +108,27 @@ export const listSubscriptions = (params = {}) => {
 
 export const updateTenantSubscription = (tenantId, data) =>
   apiFetch(`/v1/admin/tenants/${tenantId}/subscription`, { method: "PATCH", body: data });
+
+// ─── Pagamentos ──────────────────────────────────────────
+export const listPayments = (params = {}) => {
+  const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
+  return apiFetch(`/v1/admin/payments?${query}`);
+};
+
+export const createTenantPayment = (tenantId, data) =>
+  apiFetch(`/v1/admin/tenants/${tenantId}/payments`, { method: "POST", body: data });
+
+export const updateTenantPayment = (tenantId, id, data) =>
+  apiFetch(`/v1/admin/tenants/${tenantId}/payments/${id}`, { method: "PATCH", body: data });
+
+// ─── Repasses ────────────────────────────────────────────
+export const listPayouts = (params = {}) => {
+  const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
+  return apiFetch(`/v1/admin/payouts?${query}`);
+};
+
+export const createTenantPayout = (tenantId, data) =>
+  apiFetch(`/v1/admin/tenants/${tenantId}/payouts`, { method: "POST", body: data });
+
+export const updateTenantPayout = (tenantId, id, data) =>
+  apiFetch(`/v1/admin/tenants/${tenantId}/payouts/${id}`, { method: "PATCH", body: data });
