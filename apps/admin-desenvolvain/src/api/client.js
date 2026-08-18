@@ -86,3 +86,9 @@ export const updateTenant = (id, data) =>
 
 // ─── Dashboard ───────────────────────────────────────────
 export const getDashboardOverview = () => apiFetch("/v1/admin/dashboard/overview");
+
+// ─── Usuários (cross-tenant) ─────────────────────────────
+export const getUsers = (params = {}) => {
+  const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
+  return apiFetch(`/v1/admin/users?${query}`);
+};

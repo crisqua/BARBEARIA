@@ -4,6 +4,7 @@ import {
   getAccessToken,
   getDashboardOverview,
   getTenant,
+  getUsers,
   listTenants,
   login as apiLogin,
   logout as apiLogout,
@@ -822,39 +823,60 @@ const Financeiro = () => {
 // ────────────────────────────────────────────────────────
 // TELA: USUÁRIOS
 // ────────────────────────────────────────────────────────
+const roleColor = { super_admin: T.lime, admin: T.info, barbeiro: T.warning, cliente: T.mutedHi };
+
 const Usuarios = () => {
-  const usuarios = [
-    { nome: "Cristiano Barros", email: "cristiano@desenvolvain.com", role: "super_admin", barbearia: "—", status: "ativo" },
-    { nome: "Victor Mendes", email: "victor@barberaria.com", role: "admin", barbearia: "Barberaria", status: "ativo" },
-    { nome: "Carlos Silva", email: "carlos@barberaria.com", role: "barbeiro", barbearia: "Barberaria", status: "ativo" },
-    { nome: "Dom Ferreira", email: "dom@dombarbeiro.com", role: "admin", barbearia: "Dom Barbeiro", status: "ativo" },
-    { nome: "Ana Costa", email: "ana@cortefino.com", role: "admin", barbearia: "Corte Fino", status: "ativo" },
-    { nome: "Studio Admin", email: "studio@cuts.com", role: "admin", barbearia: "Studio Cuts", status: "trial" },
-  ];
-  const roleColor = { super_admin: T.lime, admin: T.info, barbeiro: T.warning };
+  const [usuarios, setUsuarios] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [roleFiltro, setRoleFiltro] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    getUsers(roleFiltro ? { role: roleFiltro } : {})
+      .then((res) => setUsuarios(res.items))
+      .finally(() => setLoading(false));
+  }, [roleFiltro]);
+
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Usuários</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{usuarios.length} usuários em toda a plataforma</div>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Usuários</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{usuarios.length} usuários {roleFiltro ? `(${roleFiltro})` : "em toda a plataforma"}</div>
+        </div>
+        <Select
+          value={roleFiltro}
+          onChange={(e) => setRoleFiltro(e.target.value)}
+          options={[
+            { value: "", label: "Todos os papéis" },
+            { value: "super_admin", label: "Super Admin" },
+            { value: "admin", label: "Admin" },
+            { value: "barbeiro", label: "Barbeiro" },
+            { value: "cliente", label: "Cliente" },
+          ]}
+        />
       </div>
-      <Table
-        cols={["Usuário", "Role", "Barbearia", "Status"]}
-        rows={usuarios.map((u, i) => (
-          <TRow key={i} last={i === usuarios.length - 1} cells={[
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Avatar name={u.nome} size={28} color={roleColor[u.role]} />
-              <div>
-                <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.nome}</div>
-                <div style={{ fontSize: 10, color: T.muted }}>{u.email}</div>
-              </div>
-            </div>,
-            <Badge color={roleColor[u.role]}>{u.role}</Badge>,
-            <span style={{ fontSize: 13, color: T.muted }}>{u.barbearia}</span>,
-            <Badge color={u.status === "ativo" ? T.success : T.warning}>{u.status}</Badge>,
-          ]} />
-        ))}
-      />
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : (
+        <Table
+          cols={["Usuário", "Role", "Barbearia", "Status"]}
+          rows={usuarios.map((u, i) => (
+            <TRow key={u.id} last={i === usuarios.length - 1} cells={[
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar name={u.name} size={28} color={roleColor[u.role]} />
+                <div>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.name}</div>
+                  <div style={{ fontSize: 10, color: T.muted }}>{u.email}</div>
+                </div>
+              </div>,
+              <Badge color={roleColor[u.role]}>{u.role}</Badge>,
+              <span style={{ fontSize: 13, color: T.muted }}>{u.tenantName || "—"}</span>,
+              <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>,
+            ]} />
+          ))}
+        />
+      )}
     </div>
   );
 };
