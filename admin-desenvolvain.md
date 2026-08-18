@@ -23,7 +23,8 @@ registro manual de pagamentos) e Repasses (registro manual com cálculo de líqu
 Plataforma também foi conectada (fora da sequência original de sprints, puxada pra frente porque a
 tela já estava com bug visível) — domínio/e-mail/webhook/trial editáveis, e as cores de
 fundo/acento re-temeiam o painel inteiro ao vivo. Atividade recente do Dashboard também foi trocada
-de dado de exemplo pra feed real (`PlatformActivity`).
+de dado de exemplo pra feed real (`PlatformActivity`), e o wizard de Nova Barbearia ganhou validação
+obrigatória por campo com bloqueio de avanço entre passos.
 
 **Ainda mock/não construído:** Suporte, Releases, impersonação ("Acessar como admin"), deploy em
 produção.
@@ -141,6 +142,17 @@ soma por tenant via `TenantContextService`, mesmo padrão do resto do painel. **
 propósito:** "Trial expirado" e "Suporte aberto" — nenhum dos dois tem regra de negócio ou módulo
 implementado ainda (cron de expiração e `SupportTicket` do Sprint 8, respectivamente).
 
+### ✅ Feature extra (fora da sequência) — Validação obrigatória no Onboarding
+O wizard de Nova Barbearia deixava avançar de passo (via botão "Próximo" ou clicando direto numa
+aba do step bar) sem nenhum campo preenchido — só o `criarBarbearia()` final validava (e só
+slug/plano). Corrigido: passo 1 (nome, slug, nome do admin, e-mail, senha, plano) e passo 2 (cores
+em hex válido) agora têm validação por campo, com mensagem inline. Navegação trocada de "pula pra
+qualquer aba" pra "só alcança o passo N se todos os passos `1..N-1` estiverem válidos" — vale pro
+botão Próximo e pro clique nas abas. E-mail validado no padrão `nome@dominio.tld` (regex simples,
+mesmo nível de validação client-side que o resto do form — o backend continua sendo a fonte de
+verdade via `class-validator` no DTO). `Input`/`Select` (componentes compartilhados, ~17 usos no
+arquivo) ganharam prop `error` opcional, retrocompatível.
+
 ### ⏳ Sprint 7 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
@@ -180,6 +192,15 @@ pelo uso manual do painel — colisão de dado de ambiente, não bug).
 - **Upload de logo:** só client-side por enquanto (preview local), sem persistência — se isso virar
   prioridade, precisa de uma decisão de infra (Supabase Storage, presigned URL) antes de implementar,
   conforme seção 6.1.6 do `CLAUDE.md`.
+
+---
+
+## 9. Ambiente local
+
+Banco de dev resetado em 18/08/2026 — só resta o super_admin real (`admin@desenvolvain.com.br`);
+tenants, planos e configurações voltaram ao zero/padrão. Qualquer teste manual ou automatizado que
+rodar localmente a partir daqui deve recriar seus próprios dados (planos, tenants) antes de usar o
+painel — não há mais dado de exemplo/seed pré-carregado.
 
 ---
 
