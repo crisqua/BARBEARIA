@@ -142,21 +142,31 @@ const ErrorBox = ({ children }) => (
   </div>
 );
 
-const Input = ({ label, value, onChange, placeholder, type = "text" }) => (
+const Input = ({ label, value, onChange, placeholder, type = "text", error }) => (
   <div>
-    {label && <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>}
+    {label && (
+      <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}{error && <span style={{ color: T.danger }}> *</span>}
+      </div>
+    )}
     <input value={value} onChange={onChange} placeholder={placeholder} type={type}
-      style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+      style={{ width: "100%", background: T.surface, border: `1px solid ${error ? T.danger : T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
+    {error && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{error}</div>}
   </div>
 );
 
-const Select = ({ label, value, onChange, options }) => (
+const Select = ({ label, value, onChange, options, error }) => (
   <div>
-    {label && <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>}
+    {label && (
+      <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}{error && <span style={{ color: T.danger }}> *</span>}
+      </div>
+    )}
     <select value={value} onChange={onChange}
-      style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}>
+      style={{ width: "100%", background: T.surface, border: `1px solid ${error ? T.danger : T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
+    {error && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{error}</div>}
   </div>
 );
 
@@ -590,6 +600,34 @@ const Barbearias = () => {
 // ────────────────────────────────────────────────────────
 const LOGO_ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/svg+xml"];
 const LOGO_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HEX_COLOR_REGEX = /^#[0-9A-Fa-f]{6}$/;
+
+/** Todo campo do passo 1 é obrigatório — e-mail precisa seguir o padrão
+ * nome@dominio.tld. Usado tanto pra bloquear avanço de tela quanto pra
+ * mostrar a mensagem certa embaixo de cada campo. */
+function getStep1Errors(form, planosDisponiveis) {
+  const errors = {};
+  if (!form.nome.trim()) errors.nome = "Obrigatório.";
+  if (!form.slug.trim()) errors.slug = "Obrigatório.";
+  else if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.slug) || form.slug.length < 2) {
+    errors.slug = "Minúsculo, alfanumérico, com hífens entre segmentos.";
+  }
+  if (!form.adminNome.trim()) errors.adminNome = "Obrigatório.";
+  if (!form.contato.trim()) errors.contato = "Obrigatório.";
+  else if (!EMAIL_REGEX.test(form.contato)) errors.contato = "E-mail inválido — use o formato nome@dominio.com.";
+  if (!form.adminSenha) errors.adminSenha = "Obrigatório.";
+  else if (form.adminSenha.length < 8) errors.adminSenha = "Mínimo 8 caracteres.";
+  if (planosDisponiveis && !form.planId) errors.planId = "Escolha um plano.";
+  return errors;
+}
+
+function getStep2Errors(form) {
+  const errors = {};
+  if (!HEX_COLOR_REGEX.test(form.cor1)) errors.cor1 = "Cor inválida — formato #RRGGBB.";
+  if (!HEX_COLOR_REGEX.test(form.cor2)) errors.cor2 = "Cor inválida — formato #RRGGBB.";
+  return errors;
+}
 
 const Onboarding = ({ setActive }) => {
   const [step, setStep] = useState(1);
@@ -601,7 +639,29 @@ const Onboarding = ({ setActive }) => {
   const [logoFile, setLogoFile] = useState(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
   const [logoError, setLogoError] = useState("");
+  const [attempted, setAttempted] = useState({});
   const STEPS = ["Dados", "Identidade", "Módulos", "Confirmar"];
+
+  const stepErrors = {
+    1: getStep1Errors(form, planos.length > 0),
+    2: getStep2Errors(form),
+    3: {},
+    4: {},
+  };
+  const isStepValid = (n) => Object.keys(stepErrors[n] || {}).length === 0;
+  const canReachStep = (n) => {
+    for (let s = 1; s < n; s += 1) if (!isStepValid(s)) return false;
+    return true;
+  };
+
+  const goToStep = (target) => {
+    if (target <= step) { setStep(target); return; }
+    if (canReachStep(target)) {
+      setStep(target);
+    } else {
+      setAttempted((a) => ({ ...a, [step]: true }));
+    }
+  };
 
   useEffect(() => {
     if (!logoFile) { setLogoPreviewUrl(null); return; }
@@ -641,12 +701,8 @@ const Onboarding = ({ setActive }) => {
 
   const criarBarbearia = async () => {
     setError("");
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.slug) || form.slug.length < 2) {
-      setError("Slug deve ser minúsculo, alfanumérico, com hífens entre segmentos.");
-      return;
-    }
-    if (!form.planId) {
-      setError("Escolha um plano.");
+    if (!isStepValid(1) || !isStepValid(2)) {
+      setError("Existem campos obrigatórios não preenchidos — volte e confira os passos anteriores.");
       return;
     }
     setSaving(true);
@@ -676,45 +732,56 @@ const Onboarding = ({ setActive }) => {
 
       {/* Step bar */}
       <div style={{ display: "flex", gap: 0, marginBottom: 28, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" }}>
-        {STEPS.map((s, i) => (
-          <div key={s} onClick={() => setStep(i + 1)} style={{
-            flex: 1, padding: "12px 16px", textAlign: "center", cursor: "pointer", fontSize: 12, fontWeight: 600,
-            borderRight: i < 3 ? `1px solid ${T.border}` : "none",
-            background: step === i + 1 ? T.lime + "14" : "transparent",
-            color: step > i + 1 ? T.success : step === i + 1 ? T.lime : T.muted,
-          }}>
-            {step > i + 1 ? "✓ " : `0${i + 1}. `}{s}
-          </div>
-        ))}
+        {STEPS.map((s, i) => {
+          const reachable = canReachStep(i + 1);
+          return (
+            <div key={s} onClick={() => goToStep(i + 1)} style={{
+              flex: 1, padding: "12px 16px", textAlign: "center", cursor: reachable ? "pointer" : "not-allowed", fontSize: 12, fontWeight: 600,
+              borderRight: i < 3 ? `1px solid ${T.border}` : "none",
+              background: step === i + 1 ? T.lime + "14" : "transparent",
+              color: step > i + 1 ? T.success : step === i + 1 ? T.lime : reachable ? T.muted : T.muted + "77",
+            }}>
+              {step > i + 1 ? "✓ " : `0${i + 1}. `}{s}
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ maxWidth: 640 }}>
         {step === 1 && (
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
-            <Input label="Nome da barbearia" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Barberaria" />
+            <Input label="Nome da barbearia" value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Barberaria"
+              error={attempted[1] ? stepErrors[1].nome : undefined} />
             <div>
-              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Slug (URL)</div>
-              <div style={{ display: "flex", alignItems: "center", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, overflow: "hidden" }}>
+              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Slug (URL){attempted[1] && stepErrors[1].slug && <span style={{ color: T.danger }}> *</span>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", background: T.surface, border: `1px solid ${attempted[1] && stepErrors[1].slug ? T.danger : T.border}`, borderRadius: 8, overflow: "hidden" }}>
                 <div style={{ padding: "10px 14px", background: T.border, fontSize: 13, color: T.muted, whiteSpace: "nowrap" }}>barberaria.app/</div>
                 <input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="nomedabarbearia" style={{ flex: 1, background: "transparent", border: "none", padding: "10px 14px", color: T.text, fontSize: 13, outline: "none" }} />
               </div>
+              {attempted[1] && stepErrors[1].slug && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{stepErrors[1].slug}</div>}
             </div>
             <div style={{ display: "flex", gap: 16 }}>
               <div style={{ flex: 1 }}>
-                <Input label="Nome do administrador" value={form.adminNome} onChange={e => setForm(f => ({ ...f, adminNome: e.target.value }))} placeholder="Ex: Victor Mendes" />
+                <Input label="Nome do administrador" value={form.adminNome} onChange={e => setForm(f => ({ ...f, adminNome: e.target.value }))} placeholder="Ex: Victor Mendes"
+                  error={attempted[1] ? stepErrors[1].adminNome : undefined} />
               </div>
               <div style={{ flex: 1 }}>
-                <Input label="E-mail do administrador" value={form.contato} onChange={e => setForm(f => ({ ...f, contato: e.target.value }))} placeholder="admin@barbearia.com" />
+                <Input label="E-mail do administrador" value={form.contato} onChange={e => setForm(f => ({ ...f, contato: e.target.value }))} placeholder="admin@barbearia.com"
+                  error={attempted[1] ? stepErrors[1].contato : undefined} />
               </div>
             </div>
-            <Input label="Senha inicial do administrador" type="password" value={form.adminSenha} onChange={e => setForm(f => ({ ...f, adminSenha: e.target.value }))} placeholder="mínimo 8 caracteres" />
+            <Input label="Senha inicial do administrador" type="password" value={form.adminSenha} onChange={e => setForm(f => ({ ...f, adminSenha: e.target.value }))} placeholder="mínimo 8 caracteres"
+              error={attempted[1] ? stepErrors[1].adminSenha : undefined} />
             {loadingPlanos ? (
               <div style={{ fontSize: 12, color: T.muted }}>Carregando planos…</div>
             ) : planos.length === 0 ? (
               <ErrorBox>Nenhum plano ativo cadastrado ainda — cadastre em Planos & Preços antes de criar uma barbearia.</ErrorBox>
             ) : (
               <Select label="Plano inicial" value={form.planId} onChange={e => setForm(f => ({ ...f, planId: e.target.value }))}
-                options={planos.map((p) => ({ value: p.id, label: `${p.name} — ${p.priceCents != null ? `R$ ${(p.priceCents / 100).toFixed(2).replace(".", ",")}/mês` : "negociado"}` }))} />
+                options={planos.map((p) => ({ value: p.id, label: `${p.name} — ${p.priceCents != null ? `R$ ${(p.priceCents / 100).toFixed(2).replace(".", ",")}/mês` : "negociado"}` }))}
+                error={attempted[1] ? stepErrors[1].planId : undefined} />
             )}
           </div>
         )}
@@ -743,21 +810,27 @@ const Onboarding = ({ setActive }) => {
               </div>
             )}
             <div style={{ display: "flex", gap: 16 }}>
-              {[["Cor primária", "cor1"], ["Cor de fundo", "cor2"]].map(([label, key]) => (
-                <div key={key} style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: T.muted, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <input
-                      type="color"
-                      value={/^#[0-9A-Fa-f]{6}$/.test(form[key]) ? form[key] : "#000000"}
-                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                      style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${T.border}`, flexShrink: 0, cursor: "pointer", padding: 0, background: "transparent" }}
-                    />
-                    <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                      style={{ flex: 1, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px", color: T.text, fontSize: 13, outline: "none" }} />
+              {[["Cor primária", "cor1"], ["Cor de fundo", "cor2"]].map(([label, key]) => {
+                const fieldError = attempted[2] ? stepErrors[2][key] : undefined;
+                return (
+                  <div key={key} style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: T.muted, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      {label}{fieldError && <span style={{ color: T.danger }}> *</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <input
+                        type="color"
+                        value={/^#[0-9A-Fa-f]{6}$/.test(form[key]) ? form[key] : "#000000"}
+                        onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                        style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${T.border}`, flexShrink: 0, cursor: "pointer", padding: 0, background: "transparent" }}
+                      />
+                      <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                        style={{ flex: 1, background: T.surface, border: `1px solid ${fieldError ? T.danger : T.border}`, borderRadius: 8, padding: "10px 12px", color: T.text, fontSize: 13, outline: "none" }} />
+                    </div>
+                    {fieldError && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{fieldError}</div>}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div>
               <div style={{ fontSize: 11, color: T.muted, marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Preview do tema</div>
@@ -824,8 +897,8 @@ const Onboarding = ({ setActive }) => {
         )}
 
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-          <Btn variant="ghost" size="sm" onClick={() => setStep(s => Math.max(1, s - 1))}>← Anterior</Btn>
-          {step < 4 && <Btn size="sm" onClick={() => setStep(s => s + 1)}>Próximo →</Btn>}
+          <Btn variant="ghost" size="sm" onClick={() => goToStep(Math.max(1, step - 1))}>← Anterior</Btn>
+          {step < 4 && <Btn size="sm" onClick={() => goToStep(step + 1)}>Próximo →</Btn>}
         </div>
       </div>
     </div>
