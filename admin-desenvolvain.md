@@ -1,153 +1,167 @@
 # Painel Master DesenvolvaIN
-## Plano de build — do protótipo aprovado ao sistema real
+## Do protótipo aprovado ao sistema real — status e plano
 
 ---
 
 ## 1. Contexto
 
-O protótipo visual (`desenvolvain-admin`, 11 telas, 100% mock) foi aprovado. Este documento é o plano
-técnico para conectá-lo ao backend real do Barberaria (`apps/api`).
+O protótipo visual (`apps/admin-desenvolvain`, 11 telas, inicialmente 100% mock) foi aprovado e
+conectado ao backend real do Barberaria (`apps/api`) de forma incremental, sprint a sprint. Este
+documento começou como plano e agora também registra o que já foi de fato construído — seção 6 marca
+cada sprint como concluído ou pendente.
 
-O backend já tem uma fatia real deste painel pronta e testada: `/v1/admin/tenants` (criar, listar,
-detalhar, editar branding, suspender) e `/v1/admin/whoami`, atrás de `@Roles('super_admin')`, sem
-tenant context (seção 6.4 do CLAUDE.md do backend). O protótipo vai muito além disso: catálogo de
-planos, assinaturas recorrentes, MRR, repasse de receita, diretório de usuários cross-tenant, suporte
-e changelog — nada disso existe no schema hoje, e parte é **explicitamente fora do MVP** na seção 4 do
-CLAUDE.md (assinaturas/billing, dashboard financeiro avançado).
+Backend usado: `/v1/admin/*`, sempre atrás de `@Roles('super_admin')`, sem `TenantContextInterceptor`
+(seção 6.4 do `CLAUDE.md`).
 
-## 2. Decisão de escopo necessária
+## 2. Status atual (resumo)
 
-Sprints 1–3 são extensão segura do que já existe. A partir do **Sprint 4** entra billing —
-recomendo tratar como iniciativa própria da incubadora, com aprovação explícita por sprint, não um
-"sim" geral para os dez.
+**Concluído e em produção local** (Sprints 1–6 + uma feature extra fora da sequência original):
+login de super_admin, CRUD de Barbearias, Onboarding completo (cria tenant + admin + assinatura numa
+transação), Dashboard com métricas reais (tenants, barbeiros, agendamentos, MRR, trials), Usuários
+cross-tenant, catálogo de Planos (trial/pro/enterprise), Assinaturas, Financeiro (MRR/ARR real +
+registro manual de pagamentos) e Repasses (registro manual com cálculo de líquido). Configurações da
+Plataforma também foi conectada (fora da sequência original de sprints, puxada pra frente porque a
+tela já estava com bug visível) — domínio/e-mail/webhook/trial editáveis, e as cores de
+fundo/acento re-temeiam o painel inteiro ao vivo.
+
+**Ainda mock/não construído:** Suporte, Releases, impersonação ("Acessar como admin"), deploy em
+produção.
 
 ## 3. Arquitetura
 
-`desenvolvain-admin` continua repositório separado, mesma stack (React+Vite), mesmo padrão de auth
-(JWT em memória + refresh via cookie httpOnly, `apiFetch` idêntico ao de `painel-barbearia`). Cada
-sprint troca uma fatia de dado mockado por uma chamada real. Todo endpoint novo segue o padrão de
-`AdminTenantsController`: módulo NestJS próprio, `JwtAuthGuard`+`RolesGuard`, `@Roles('super_admin')`,
-sem `TenantContextInterceptor`.
+`apps/admin-desenvolvain` é um app dentro do monorepo (não é mais repositório separado — movido
+depois do Sprint 1). Mesma stack dos outros frontends (React+Vite), mesmo padrão de auth (JWT em
+memória + refresh via cookie httpOnly, `apiFetch` idêntico ao de `painel-barbearia`). Todo endpoint
+novo segue o padrão de `AdminTenantsController`: módulo NestJS próprio, `JwtAuthGuard`+`RolesGuard`,
+`@Roles('super_admin')`.
 
-## 4. Modelo de dados novo (7 modelos Prisma, introduzidos incrementalmente)
+**Tema do painel:** os tokens de cor (`T` em `App.jsx`) são mutados em runtime por `applyTheme()`
+quando as Configurações da Plataforma são carregadas/salvas — `T.bg`/`T.lime` vêm direto do banco,
+e `T.surface`/`card`/`border`/`borderHi` são **derivados** do `bg` (função `lighten()`, mistura com
+branco) pra manter a hierarquia visual em vez de travar tudo na mesma cor. Isso é mutação de objeto
+compartilhado, não Context — funciona porque todo componente do arquivo lê `T.xxx` direto no render.
 
-| Modelo | tenant_id? | Nota |
-|---|---|---|
-| `Plan` | Não | Catálogo global de planos (código, preço, limites, módulos incluídos). |
-| `Subscription` | Sim | Contrato tenant ↔ plano (status, ciclo, próxima cobrança). |
-| `Payment` | Sim | Cobrança da assinatura. |
-| `Payout` (Repasse) | Sim | Entrada manual até haver regra de cálculo definida. |
-| `SupportTicket` | Sim | Chamado de suporte por tenant. |
-| `Release` | Não | Changelog da plataforma. |
-| `PlatformSettings` | Não | Singleton de configuração global. |
+## 4. Modelo de dados (o que existe hoje)
 
-## 5. Estratégia de RLS
+| Modelo | tenant_id? | RLS | Status |
+|---|---|---|---|
+| `Plan` | Não | Isenta (catálogo global) | ✅ Sprint 4 |
+| `Subscription` | Sim | **Normal** | ✅ Sprint 5 |
+| `Payment` | Sim | **Normal** | ✅ Sprint 6 |
+| `Payout` (Repasse) | Sim | **Normal** | ✅ Sprint 6 |
+| `PlatformSettings` | Não | Isenta (singleton global) | ✅ feature extra |
+| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 8 |
+| `Release` | Não | Isenta (planejado) | ⏳ Sprint 9 (parcial) |
 
-`tenants` já fica fora da RLS por design (Super Admin precisa ver todas as linhas de uma vez, o que
-não combina com `current_setting` por transação — isolamento por rota+RBAC, não policy de banco).
+### Mudança de decisão registrada durante a execução (Sprint 5)
 
-| Tabela | RLS | Por quê |
-|---|---|---|
-| `Plan` | Isenta | Catálogo global, não é dado de tenant. |
-| `Subscription` | Isenta (exceção documentada) | Gerida só pelo Super Admin; exposição futura ao tenant via `/v1/tenants/me/subscription` com filtro manual, mesmo padrão de `/v1/tenants/me`. |
-| `Payment` | Isenta | Mesma razão de `Subscription`. |
-| `Payout` | Isenta | Idem — sem motor automático no Sprint 6. |
-| `SupportTicket` | **Normal** (policy padrão) | Faz sentido o tenant ver seus próprios tickets no futuro; leitura cross-tenant do Super Admin precisa de role Postgres com `BYPASSRLS` — spike no início do Sprint 8. |
-| `Release` | Isenta | Changelog público. |
-| `PlatformSettings` | Isenta | Singleton global. |
+O plano original prescrevia `Subscription`/`Payment`/`Payout` **isentas** de RLS (mesma exceção de
+`tenants`/`plans`). Isso foi revisto e invertido durante a implementação: são dado **do tenant**, não
+da plataforma — mesma categoria de `services`/`appointments`. Ficaram com RLS normal, e a leitura
+cross-tenant do Super Admin soma por tenant via `TenantContextService` (mesmo mecanismo usado desde o
+Sprint 2 pra `users`/`appointments`, que também têm RLS forçado). Nenhum bypass de RLS novo foi
+criado em nenhum momento do projeto.
 
-**Ação obrigatória no CI:** cada tabela isenta acima precisa entrar na whitelist do gate de RLS
-(seção 5.5, `scripts/check-rls.sql`) no mesmo commit da migration, ou o build quebra.
+**Achado técnico relevante** (Sprint 2): a role de runtime (`barberaria_app`) é `NOBYPASSRLS` de
+propósito (`scripts/setup-app-role.ts`) — leitura cross-tenant direta em tabela com RLS forçado
+falha com erro (`appointments`, sem `missing_ok` na policy) ou retorna vazio silenciosamente
+(`users`, que tem `missing_ok` por causa do carve-out do super_admin, migration `0002`). Toda leitura
+cross-tenant no painel master soma por tenant, nunca lê direto.
+
+## 5. Endpoints existentes
+
+```
+GET   /v1/admin/dashboard/overview          — tenants, barbeiros, agendamentos, MRR, trials, pagamentos pendentes
+GET   /v1/admin/tenants                     GET/:id   POST   PATCH /:id
+GET   /v1/admin/users                       — cross-tenant, filtro role/tenantId
+GET   /v1/admin/plans                       POST      PATCH /:id
+GET   /v1/admin/subscriptions               GET/PATCH /v1/admin/tenants/:tenantId/subscription (upsert)
+GET   /v1/admin/payments                    POST/PATCH /v1/admin/tenants/:tenantId/payments[/:id]
+GET   /v1/admin/payouts                     POST/PATCH /v1/admin/tenants/:tenantId/payouts[/:id]
+GET   /v1/admin/settings                    PATCH /v1/admin/settings
+```
 
 ## 6. Sprints
 
-### Sprint 1 — Onboarding real + acerto de contrato (seguro)
-Passo 1 do wizard só pede e-mail do admin; `CreateTenantDto.admin` exige `name`+`password` também.
-- **Backend:** nenhuma mudança — `POST /v1/admin/tenants` já suporta tudo.
-- **Frontend:** adicionar campos faltantes no passo 1; passo 4 chama `createTenant()` de verdade;
-  Barbearias (lista+detalhe) trocam mock por `listTenants()`/`getTenant()`; "Suspender acesso" chama
-  `updateTenant(id, { status })`.
-- **Aceite:** criar barbearia pelo wizard gera tenant+admin real; lista reflete o banco.
+### ✅ Sprint 1 — Onboarding real + acerto de contrato
+Login funcional, Onboarding conectado (`createTenant()` real), Barbearias (lista+detalhe+suspender)
+conectada. `CreateTenantDto.admin` ganhou os campos que faltavam no protótipo.
 
-### Sprint 2 — Dashboard real (parcial) (seguro)
-- **Backend:** `GET /v1/admin/dashboard/overview` — total tenants por status, barbeiros ativos
-  cross-tenant, agendamentos do mês cross-tenant. Via `this.prisma` direto (mesmo bypass de
-  `AdminTenantsService`).
-- **Frontend:** stats Barbearias/Barbeiros/Agendamentos reais; MRR/Churn com "em breve" até Sprint 6.
-- **Aceite:** ações do Sprint 1 refletem nos números sem refresh manual.
+### ✅ Sprint 2 — Dashboard real (parcial)
+`GET /v1/admin/dashboard/overview` — tenants por status, barbeiros ativos, agendamentos do mês, tudo
+cross-tenant somando por tenant (achado do `NOBYPASSRLS` documentado na seção 4).
 
-### Sprint 3 — Usuários cross-tenant (seguro)
-- **Backend:** `GET /v1/admin/users` — paginado, filtro role/tenant, join com `tenant.name`.
-- **Frontend:** tela Usuários conectada.
-- **Aceite:** criar profissional em qualquer painel-barbearia aparece na lista.
+### ✅ Sprint 3 — Usuários cross-tenant
+`GET /v1/admin/users`, filtro por role/tenant. Super_admin sai direto (carve-out da migration 0002);
+demais papéis somam por tenant.
 
-### Sprint 4 — Catálogo de Planos ⚑ requer confirmação
-- **Schema:** migration `0005_add_plan_catalog` — tabela `plans`, sem tenant_id, sem RLS.
-- **Backend:** `/v1/admin/plans` CRUD completo.
-- **Frontend:** tela Planos & Preços conectada.
-- **Decisão necessária:** confirmar os 4 planos, preços e limites reais — o protótipo tem valores
-  de exemplo, não uma tabela de preços aprovada.
+### ✅ Sprint 4 — Catálogo de Planos
+**Decisão confirmada:** 3 planos — `trial`, `pro`, `enterprise` (sem "Starter", diferente do
+protótipo original). `code` travado nesses 3 valores, resto editável pela tela.
 
-### Sprint 5 — Assinaturas + Onboarding completo ⚑ requer confirmação
-- **Schema:** migration `0006_add_subscriptions` — tabela `subscriptions`, RLS-isenta.
-- **Backend:** `/v1/admin/subscriptions` CRUD; `AdminTenantsService.create()` passa a criar a
-  Subscription inicial na mesma transação.
-- **Frontend:** passos 3 e 4 do Onboarding passam a persistir de verdade; tela Assinaturas conectada.
-- **Aceite:** completar o wizard cria tenant+admin+assinatura numa única transação.
+### ✅ Sprint 5 — Assinaturas + Onboarding completo
+`Subscription` (RLS normal, ver seção 4). Onboarding completo: passo 1 usa planos reais, passo 3
+mostra módulos do plano escolhido (só leitura), passo 4 persiste tenant+admin+assinatura numa
+transação. Bug real corrigido em teste: `upsert` do Prisma quebrava com campo `undefined` no
+`update` — trocado por create/update explícito.
 
-### Sprint 6 — Financeiro & Repasses ⚑⚑ requer regra de negócio
-- **Schema:** migration `0007_add_payments` — `payments` e `payouts`, ambas RLS-isentas.
-- **Backend:** MRR = `SUM(subscription.plan.priceCents) WHERE status='active'` (sem tabela nova);
-  `/v1/admin/payments` e `/v1/admin/payouts` com registro manual, sem motor de cálculo automático.
-- **Frontend:** Financeiro (MRR real + Pagamentos) e Repasses conectados, ambos manuais.
-- **Não vou inventar a regra de repasse:** pressupõe a plataforma processando pagamento em nome da
-  barbearia e devolvendo o líquido — precisa definir base de cálculo, %, meio de pagamento antes de
-  automatizar.
+### ✅ Sprint 6 — Financeiro & Repasses
+MRR real (soma de `plan.priceCents` das assinaturas ativas). `Payment`/`Payout` com registro manual,
+sem motor de cálculo automático — Repasse só faz a aritmética (líquido = bruto − taxa%) sobre valores
+digitados pelo Super Admin. **Sem detecção automática de inadimplência** — "pagamentos pendentes" é
+só contagem do status marcado manualmente, nenhuma regra de prazo/carência inventada.
 
-### Sprint 7 — Impersonação ("Acessar como admin") ⚑ elevação de privilégio
-Pode rodar em paralelo aos Sprints 4–6.
-- **Backend:** `POST /v1/admin/tenants/:id/impersonate` — token de vida curta (~5min) para o admin
-  do tenant; toda chamada logada em nova tabela `platform_activities`; sem refresh token de
-  impersonação.
-- **Frontend:** botão no detalhe da barbearia abre painel-barbearia numa aba nova com o token.
-- **Antes de shippar:** revisão de segurança dedicada.
+### ✅ Feature extra (fora da sequência) — Configurações da Plataforma
+`PlatformSettings` singleton (migration já insere a linha inicial, `GET` nunca dá 404). Domínio,
+e-mail de suporte, webhook, trial padrão editáveis; cores de fundo/acento com `<input type="color">`
+nativo + preview ao vivo, aplicando no painel inteiro ao salvar (ver mecanismo na seção 3). Puxada
+pra frente do Sprint 9 original porque a tela já estava visível e com bug (cliques não faziam nada).
 
-### Sprint 8 — Suporte (baixo risco)
-- **Schema:** migration `0008_add_support_tickets` — RLS normal (seção 5.4).
-- **Backend:** `/v1/admin/support/tickets`. Spike de 1–2h: leitura cross-tenant sob RLS normal via
-  role Postgres com `BYPASSRLS` dedicado.
-- **Frontend:** tela Suporte (leitura + status). Criação de ticket fica para quando painel-barbearia
-  ganhar essa funcionalidade — fora deste plano.
+**Bugs corrigidos depois de reportados:**
+- Re-tema só mudava `T.bg`/`T.lime`, não `T.surface` (usado por Sidebar/TopBar) — corrigido com
+  derivação de superfícies a partir do bg (`lighten()`).
+- Seletor de cor da barbearia no Onboarding (passo 2, "Cor primária"/"Cor de fundo") tinha o mesmo
+  bug de origem do protótipo (`<div>` decorativa sem `<input type="file">`/`type="color"` por trás)
+  — corrigido junto.
+- Upload de logo (Onboarding passo 2) não abria seletor de arquivo — agora abre, aceita PNG/JPG/
+  JPEG/SVG com preview e validação de tamanho (2MB). **Upload real pra armazenamento na nuvem ainda
+  não existe** (Supabase Storage não configurado) — a tela deixa isso explícito, não finge persistir.
 
-### Sprint 9 — Releases & Configurações (baixo esforço)
-- **Schema:** migration `0009_add_releases_and_settings` — `releases` e `platform_settings`.
-- **Backend:** `/v1/admin/releases` (só leitura, inserido manualmente pelos devs a cada deploy),
-  `/v1/admin/settings` (GET/PATCH da linha única).
-- **Frontend:** ambas telas conectadas.
+### ⏳ Sprint 7 — Impersonação ("Acessar como admin") — não iniciado
+Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
+de shippar. Pode rodar independente dos sprints de billing.
 
-### Sprint 10 — Deploy
-Deploy do `desenvolvain-admin` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
+### ⏳ Sprint 8 — Suporte — não iniciado
+`SupportTicket` com RLS normal. Spike técnico necessário: leitura cross-tenant sob RLS normal (mesmo
+padrão de soma por tenant já usado em todo o resto — não deveria precisar de `BYPASSRLS` dedicado
+como o plano original cogitava, já que o mesmo mecanismo de `TenantContextService` resolve isso desde
+o Sprint 2).
+
+### ⏳ Sprint 9 — Releases — parcialmente feito
+Configurações já está pronta (ver acima). Falta só `Release` (changelog, leitura manual, inserido
+pelos devs a cada deploy).
+
+### ⏳ Sprint 10 — Deploy — não iniciado
+Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
 
-## 7. Testes obrigatórios
+## 7. Testes
 
-Mesmo padrão de `apps/api/test/`, replicado por sprint que introduzir rota nova:
-- **Sprints 1–3, 9, 10:** RBAC (role ≠ super_admin → 403), shape de resposta.
-- **Sprints 4–6:** acima + criar assinatura com plano inexistente falha; cancelar assinatura não
-  apaga tenant.
-- **Sprint 7:** token de impersonação expira no tempo certo, não gera outro token, toda chamada
-  grava em `platform_activities`.
-- **Sprint 8:** isolamento completo da seção 7 do CLAUDE.md (itens 1–4) aplicado a `support_tickets`.
+Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
+líquido do repasse, upsert de assinatura, validação de hex, etc.) — ver `apps/api/test/admin/`.
+Suíte completa: 119/120 (a única falha é `connection-pool-leak.e2e-spec.ts`, flakiness pré-existente
+do ambiente local, confirmada via `git stash` como não relacionada a nenhuma mudança deste projeto).
 
-## 8. Riscos
+## 8. Riscos ainda vigentes
 
-- **Escopo:** Sprints 4–6 são, na prática, um segundo produto (billing da incubadora) crescendo no
-  mesmo trimestre do MVP tenant-facing — tratar como iniciativa própria, não espremer na sequência
-  original do CLAUDE.md.
-- **Repasses:** maior risco do plano — é dinheiro saindo da plataforma pra terceiros. Não shippar
-  cálculo automático sem regra de negócio validada.
-- **Impersonação:** maior risco de segurança — token de vida curta, log obrigatório, sem exceção.
+- **Repasses:** cálculo automático de receita/taxa continua fora de escopo até existir regra de
+  negócio validada — o que existe hoje é só registro manual com a conta feita.
+- **Impersonação (Sprint 7):** ainda não implementada — maior risco de segurança do que falta
+  construir, não pular a revisão dedicada quando chegar a vez.
+- **Upload de logo:** só client-side por enquanto (preview local), sem persistência — se isso virar
+  prioridade, precisa de uma decisão de infra (Supabase Storage, presigned URL) antes de implementar,
+  conforme seção 6.1.6 do `CLAUDE.md`.
 
 ---
 
-*Plano de projeto — Agosto/2026 — Painel Master DesenvolvaIN.*
+*Atualizado em Agosto/2026 — Painel Master DesenvolvaIN.*

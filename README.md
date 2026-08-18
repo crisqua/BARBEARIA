@@ -13,7 +13,7 @@ BARBEARIA/
 │   ├── painel-barbearia/      # Painel de administração da barbearia (conectado à API)
 │   └── admin-desenvolvain/    # Painel master da incubadora (super_admin, conectado à API)
 ├── admin-barbearia.md         # Guia de reprodução do protótipo do painel-barbearia
-├── admin-desenvolvain.md      # Plano de build (sprints) do painel master
+├── admin-desenvolvain.md      # Status e plano de build (sprints) do painel master
 └── README.md
 ```
 
@@ -34,5 +34,5 @@ cd apps/admin-desenvolvain && npm install && npm run dev # http://localhost:5175
 
 - Backend: NestJS + Prisma + PostgreSQL (RLS nativo por tenant)
 - Frontends: React 18 + Vite, estilização inline (tokens de cor centralizados no topo de cada `App.jsx`)
-- `cliente-app` e `painel-barbearia` já conectados à API real; `admin-desenvolvain` em conexão
-  incremental por sprint (ver `admin-desenvolvain.md`).
+- Os três frontends já conectados à API real. `admin-desenvolvain` segue em conexão incremental por
+  sprint (Sprints 1–6 concluídos + Configurações da Plataforma — ver `admin-desenvolvain.md`).
