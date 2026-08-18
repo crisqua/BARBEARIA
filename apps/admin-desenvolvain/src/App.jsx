@@ -6,6 +6,7 @@ import {
   createTenantPayout,
   getAccessToken,
   getDashboardOverview,
+  getSettings,
   getTenant,
   getUsers,
   listPayments,
@@ -18,6 +19,7 @@ import {
   setAccessToken,
   updatePlan,
   updateTenant,
+  updateSettings,
   updateTenantPayment,
   updateTenantPayout,
   updateTenantSubscription,
@@ -43,6 +45,19 @@ const T = {
   danger:    "#F25C5C",
   info:      "#60A5FA",
 };
+
+/**
+ * Re-temeia o painel inteiro a partir das configurações da plataforma —
+ * muta os tokens compartilhados em vez de introduzir Context (T é lido
+ * direto por todo componente do arquivo). Só bg/acento são configuráveis
+ * de propósito (ver admin-desenvolvain.md) — o resto da paleta fica fixo.
+ */
+function applyTheme(settings) {
+  if (!settings) return;
+  T.bg = settings.bgColor;
+  T.lime = settings.accentColor;
+  T.limeSoft = settings.accentColor + "14";
+}
 
 // ─── MICRO COMPONENTS ────────────────────────────────────
 const Badge = ({ color, children, small }) => (
@@ -1298,43 +1313,111 @@ const Assinaturas = () => {
 // ────────────────────────────────────────────────────────
 // TELA: CONFIGURAÇÕES
 // ────────────────────────────────────────────────────────
-const Config = () => (
-  <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-    <div style={{ marginBottom: 24 }}>
-      <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Configurações da Plataforma</div>
-      <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Parâmetros globais da Desenvolva IN</div>
-    </div>
-    <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 280, display: "flex", flexDirection: "column", gap: 14 }}>
-        {[["Domínio base", "barberaria.app"], ["E-mail de suporte", "suporte@desenvolvain.com"], ["Webhook de pagamentos", "https://api.barberaria.app/webhooks/pay"], ["Trial padrão", "14 dias"]].map(([label, val]) => (
-          <div key={label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-            <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{val}</div>
+const COLOR_HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+
+const Config = ({ onThemeChange }) => {
+  const [form, setForm] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setForm({
+        domain: s.domain,
+        supportEmail: s.supportEmail,
+        webhookUrl: s.webhookUrl,
+        defaultTrialDays: String(s.defaultTrialDays),
+        bgColor: s.bgColor,
+        accentColor: s.accentColor,
+      }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const salvar = async () => {
+    setError("");
+    setSaved(false);
+    if (!COLOR_HEX_RE.test(form.bgColor) || !COLOR_HEX_RE.test(form.accentColor)) {
+      setError("Cores devem estar no formato hex #RRGGBB.");
+      return;
+    }
+    const defaultTrialDays = parseInt(form.defaultTrialDays, 10);
+    if (Number.isNaN(defaultTrialDays) || defaultTrialDays < 1) {
+      setError("Trial padrão deve ser um número de dias válido.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await updateSettings({ ...form, defaultTrialDays });
+      onThemeChange?.(updated);
+      setSaved(true);
+    } catch (e) {
+      setError(e.message || "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !form) {
+    return <div style={{ padding: 32, color: T.muted, fontSize: 12 }}>Carregando…</div>;
+  }
+
+  return (
+    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Configurações da Plataforma</div>
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Parâmetros globais da Desenvolva IN</div>
+      </div>
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 280, display: "flex", flexDirection: "column", gap: 14 }}>
+          <Input label="Domínio base" value={form.domain} onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value }))} />
+          <Input label="E-mail de suporte" value={form.supportEmail} onChange={(e) => setForm((f) => ({ ...f, supportEmail: e.target.value }))} />
+          <Input label="Webhook de pagamentos" value={form.webhookUrl} onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))} />
+          <Input label="Trial padrão (dias)" value={form.defaultTrialDays} onChange={(e) => setForm((f) => ({ ...f, defaultTrialDays: e.target.value }))} />
+        </div>
+        <div style={{ flex: 1, minWidth: 280, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 16 }}>Identidade da Plataforma</div>
+          {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
+
+          {/* Preview ao vivo — reflete o form antes de salvar */}
+          <div style={{ background: form.bgColor, borderRadius: 10, padding: 20, border: `1px solid ${T.border}`, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 900, color: form.accentColor, letterSpacing: "0.06em" }}>✂ DESENVOLVA IN</div>
+            <div style={{ fontSize: 10, color: T.mutedHi, marginTop: 2, marginBottom: 12 }}>Painel Master · Incubadora</div>
+            <div style={{ background: form.accentColor, color: form.bgColor, borderRadius: 6, padding: "7px 16px", fontSize: 12, fontWeight: 700, display: "inline-block" }}>Botão de exemplo</div>
           </div>
-        ))}
-      </div>
-      <div style={{ flex: 1, minWidth: 280, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 16 }}>Identidade da Plataforma</div>
-        <div style={{ background: T.bg, borderRadius: 10, padding: 20, border: `1px solid ${T.border}`, marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: T.lime, letterSpacing: "0.06em" }}>✂ DESENVOLVA IN</div>
-          <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>Painel Master · Incubadora</div>
-        </div>
-        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-          {[["Fundo", "#080B12"], ["Acento", "#A3E635"]].map(([label, hex]) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600 }}>{label}</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ width: 28, height: 28, borderRadius: 6, background: hex, border: `1px solid ${T.border}` }} />
-                <span style={{ fontSize: 12, color: T.text, fontFamily: "monospace" }}>{hex}</span>
+
+          <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+            {[["Fundo", "bgColor"], ["Acento", "accentColor"]].map(([label, key]) => (
+              <div key={key} style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600 }}>{label}</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="color"
+                    value={COLOR_HEX_RE.test(form[key]) ? form[key] : "#000000"}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${T.border}`, cursor: "pointer", padding: 0, background: "transparent" }}
+                  />
+                  <input
+                    value={form[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    style={{ width: 90, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "6px 8px", color: T.text, fontSize: 12, fontFamily: "monospace", outline: "none" }}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          {saved && <div style={{ fontSize: 11, color: T.success, marginBottom: 10 }}>✓ Configurações salvas.</div>}
+          <div onClick={saving ? undefined : salvar} style={{ background: T.lime, borderRadius: 8, padding: "10px 16px", textAlign: "center", cursor: saving ? "default" : "pointer", fontSize: 13, fontWeight: 700, color: T.bg, opacity: saving ? 0.6 : 1 }}>
+            {saving ? "Salvando..." : "Salvar configurações"}
+          </div>
         </div>
-        <div style={{ background: T.lime, borderRadius: 8, padding: "10px 16px", textAlign: "center", cursor: "pointer", fontSize: 13, fontWeight: 700, color: T.bg }}>Salvar configurações</div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ────────────────────────────────────────────────────────
 // TELA: REPASSES
@@ -1478,6 +1561,7 @@ export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
+  const [, setThemeTick] = useState(0); // força re-render depois de applyTheme mutar T
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -1493,12 +1577,19 @@ export default function App() {
         }
         setUser(me);
         setScreen("app");
+        // Tema não bloqueia o boot — se falhar, fica no padrão.
+        getSettings().then((s) => { applyTheme(s); setThemeTick((t) => t + 1); }).catch(() => {});
       })
       .catch(() => {
         setAccessToken(null);
         setScreen("login");
       });
   }, []);
+
+  const handleThemeChange = (settings) => {
+    applyTheme(settings);
+    setThemeTick((t) => t + 1);
+  };
 
   const handleLogin = async (email, password) => {
     const res = await apiLogin(email, password);
@@ -1509,6 +1600,7 @@ export default function App() {
     const me = await whoami();
     setUser(me);
     setScreen("app");
+    getSettings().then((s) => { applyTheme(s); setThemeTick((t) => t + 1); }).catch(() => {});
   };
 
   const handleLogout = async () => {
@@ -1540,7 +1632,7 @@ export default function App() {
     if (page === "usuarios")    return <Usuarios />;
     if (page === "suporte")     return <Suporte />;
     if (page === "releases")    return <Releases />;
-    if (page === "config")      return <Config />;
+    if (page === "config")      return <Config onThemeChange={handleThemeChange} />;
     return <Dashboard setActive={setPage} />;
   };
 

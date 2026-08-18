@@ -9,6 +9,8 @@ import { AdminPayoutsController } from './admin-payouts.controller';
 import { AdminPayoutsService } from './admin-payouts.service';
 import { AdminPlansController } from './admin-plans.controller';
 import { AdminPlansService } from './admin-plans.service';
+import { AdminSettingsController } from './admin-settings.controller';
+import { AdminSettingsService } from './admin-settings.service';
 import { AdminSubscriptionsController } from './admin-subscriptions.controller';
 import { AdminSubscriptionsService } from './admin-subscriptions.service';
 import { AdminTenantsController } from './admin-tenants.controller';
@@ -27,6 +29,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminSubscriptionsController,
     AdminPaymentsController,
     AdminPayoutsController,
+    AdminSettingsController,
   ],
   providers: [
     AdminTenantsService,
@@ -36,6 +39,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminSubscriptionsService,
     AdminPaymentsService,
     AdminPayoutsService,
+    AdminSettingsService,
   ],
 })
 export class AdminModule {}

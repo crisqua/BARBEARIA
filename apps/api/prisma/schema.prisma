@@ -23,6 +23,23 @@ datasource db {
 // 6.4 do CLAUDE.md). `code` é fixo (trial|pro|enterprise, decisão de
 // negócio já tomada) e imutável após criado; nome/preço/limite/módulos
 // ficam editáveis pela tela de Planos & Preços.
+// Configuração global da plataforma — singleton (1 linha só, sempre existe
+// desde a migration). Sem tenant_id, sem RLS, mesmo raciocínio de Plan.
+// bgColor/accentColor re-temeiam o painel master inteiro (não a tela de
+// login — ver admin-desenvolvain.md).
+model PlatformSettings {
+  id               String   @id @default(uuid()) @db.Uuid
+  domain           String   @db.VarChar(255)
+  supportEmail     String   @map("support_email") @db.VarChar(255)
+  webhookUrl       String   @map("webhook_url") @db.VarChar(2048)
+  defaultTrialDays Int      @map("default_trial_days")
+  bgColor          String   @map("bg_color") @db.VarChar(7)
+  accentColor      String   @map("accent_color") @db.VarChar(7)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("platform_settings")
+}
+
 model Plan {
   id         String   @id @default(uuid()) @db.Uuid
   code       String   @unique @db.VarChar(20)

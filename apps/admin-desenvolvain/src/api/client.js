@@ -132,3 +132,8 @@ export const createTenantPayout = (tenantId, data) =>
 
 export const updateTenantPayout = (tenantId, id, data) =>
   apiFetch(`/v1/admin/tenants/${tenantId}/payouts/${id}`, { method: "PATCH", body: data });
+
+// ─── Configurações da plataforma ─────────────────────────
+export const getSettings = () => apiFetch("/v1/admin/settings");
+
+export const updateSettings = (data) => apiFetch("/v1/admin/settings", { method: "PATCH", body: data });
