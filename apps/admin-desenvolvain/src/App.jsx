@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import {
+  createPlan,
   createTenant,
   getAccessToken,
   getDashboardOverview,
   getTenant,
   getUsers,
+  listPlans,
   listTenants,
   login as apiLogin,
   logout as apiLogout,
   setAccessToken,
+  updatePlan,
   updateTenant,
   whoami,
 } from "./api/client";
@@ -693,62 +696,216 @@ const Onboarding = ({ setActive }) => {
 // ────────────────────────────────────────────────────────
 // TELA: PLANOS & PREÇOS
 // ────────────────────────────────────────────────────────
+const PLAN_CODES = ["trial", "pro", "enterprise"];
+const PLAN_COLOR = { trial: T.muted, pro: T.lime, enterprise: T.warning };
+const PLAN_CORE_MODULES = ["Agendamento", "CRM Básico"];
+const PLAN_OPTIONAL_MODULES = ["Comissões", "Assinaturas", "Clube de Clientes", "Venda de Produtos", "Dashboard Avançado", "WhatsApp/SMS", "Marketing", "Estoque"];
+
+const emptyPlanForm = { code: "", name: "", priceReais: "", limitLabel: "", modules: [], active: true };
+
 const Planos = () => {
-  const planos = [
-    { id: "trial", nome: "Trial", preco: 0, barbearias: 0, limite: "14 dias", cor: T.muted },
-    { id: "starter", nome: "Starter", preco: 99, barbearias: 2, limite: "até 2 barbeiros", cor: T.info },
-    { id: "pro", nome: "Pro", preco: 299, barbearias: 3, limite: "até 10 barbeiros", cor: T.lime, destaque: true },
-    { id: "enterprise", nome: "Enterprise", preco: null, barbearias: 2, limite: "ilimitado", cor: T.warning },
-  ];
+  const [planos, setPlanos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null | "new" | id
+  const [form, setForm] = useState(emptyPlanForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = () =>
+    listPlans()
+      .then((res) => setPlanos(res.items))
+      .finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, []);
+
+  const codigosDisponiveis = PLAN_CODES.filter((c) => !planos.some((p) => p.code === c));
+
+  const startNew = () => {
+    setForm({ ...emptyPlanForm, code: codigosDisponiveis[0] || "" });
+    setError("");
+    setEditing("new");
+  };
+  const startEdit = (p) => {
+    setForm({
+      code: p.code,
+      name: p.name,
+      priceReais: p.priceCents != null ? (p.priceCents / 100).toFixed(2).replace(".", ",") : "",
+      limitLabel: p.limitLabel || "",
+      modules: p.modules || [],
+      active: p.active,
+    });
+    setError("");
+    setEditing(p.id);
+  };
+
+  const toggleModulo = (m) =>
+    setForm((f) => ({ ...f, modules: f.modules.includes(m) ? f.modules.filter((x) => x !== m) : [...f.modules, m] }));
+
+  const save = async () => {
+    setError("");
+    if (!form.name || form.name.length < 2) { setError("Nome é obrigatório."); return; }
+    let priceCents;
+    if (form.priceReais.trim() !== "") {
+      priceCents = Math.round(parseFloat(form.priceReais.replace(",", ".")) * 100);
+      if (Number.isNaN(priceCents) || priceCents < 0) { setError("Preço inválido."); return; }
+    }
+
+    setSaving(true);
+    try {
+      if (editing === "new") {
+        await createPlan({ code: form.code, name: form.name, priceCents, limitLabel: form.limitLabel || undefined, modules: form.modules, active: form.active });
+      } else {
+        await updatePlan(editing, { name: form.name, priceCents: priceCents ?? null, limitLabel: form.limitLabel || undefined, modules: form.modules, active: form.active });
+      }
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setError(e.message || "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const planosOrdenados = [...planos].sort((a, b) => PLAN_CODES.indexOf(a.code) - PLAN_CODES.indexOf(b.code));
+
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Planos & Preços</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Estrutura comercial da plataforma</div>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Planos & Preços</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Estrutura comercial da plataforma</div>
+        </div>
+        {codigosDisponiveis.length > 0 ? (
+          <Btn size="sm" onClick={startNew}>+ Novo plano</Btn>
+        ) : (
+          <span style={{ fontSize: 11, color: T.muted }}>Os 3 planos já foram cadastrados</span>
+        )}
       </div>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
-        {planos.map(p => (
-          <div key={p.id} style={{
-            flex: 1, minWidth: 190, background: T.card, border: `1.5px solid ${p.destaque ? p.cor : T.border}`,
-            borderRadius: 14, padding: 20, position: "relative", overflow: "hidden"
-          }}>
-            {p.destaque && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: p.cor }} />}
-            <div style={{ fontSize: 13, fontWeight: 800, color: p.cor, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>{p.nome}</div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: T.text, marginBottom: 4 }}>{p.preco !== null ? `R$ ${p.preco}` : "Negociado"}</div>
-            {p.preco !== null && <div style={{ fontSize: 11, color: T.muted, marginBottom: 14 }}>/mês por barbearia</div>}
-            <div style={{ fontSize: 12, color: T.mutedHi, marginBottom: 6 }}>• {p.limite}</div>
-            <div style={{ fontSize: 12, color: T.mutedHi }}>• {p.barbearias} barbearias ativas</div>
+
+      {editing !== null && (
+        <div style={{ background: T.card, border: `1.5px solid ${T.lime}55`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.lime, marginBottom: 16 }}>
+            {editing === "new" ? "Novo Plano" : `Editar Plano · ${form.code}`}
           </div>
-        ))}
-      </div>
-      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 14 }}>Comparativo de módulos por plano</div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-              <th style={{ padding: "8px 0", textAlign: "left", fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase" }}>Módulo</th>
-              {["Trial", "Starter", "Pro", "Enterprise"].map(p => <th key={p} style={{ padding: "8px 16px", fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase" }}>{p}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ["Agendamento", true, true, true, true],
-              ["CRM Básico", true, true, true, true],
-              ["Comissões", false, true, true, true],
-              ["Assinaturas", false, false, true, true],
-              ["WhatsApp/SMS", false, false, true, true],
-              ["Dashboard Avançado", false, false, true, true],
-              ["Estoque", false, false, true, true],
-              ["Marketing", false, false, false, true],
-            ].map(([mod, ...vals]) => (
-              <tr key={mod} style={{ borderBottom: `1px solid ${T.border}22` }}>
-                <td style={{ padding: "10px 0", fontSize: 13, color: T.text }}>{mod}</td>
-                {vals.map((v, i) => <td key={i} style={{ padding: "10px 16px", textAlign: "center", fontSize: 14 }}>{v ? <span style={{ color: T.success }}>✓</span> : <span style={{ color: T.muted }}>✕</span>}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
+          <div style={{ display: "flex", gap: 16, marginBottom: 18, flexWrap: "wrap" }}>
+            {editing === "new" && (
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <Select
+                  label="Código"
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                  options={codigosDisponiveis.map((c) => ({ value: c, label: c }))}
+                />
+              </div>
+            )}
+            <div style={{ flex: 2, minWidth: 200 }}>
+              <Input label="Nome" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Pro" />
+            </div>
+            <div style={{ flex: 1, minWidth: 140 }}>
+              <Input label="Preço mensal (R$, vazio = negociado)" value={form.priceReais} onChange={(e) => setForm((f) => ({ ...f, priceReais: e.target.value }))} placeholder="299,00" />
+            </div>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <Input label="Limite (texto livre)" value={form.limitLabel} onChange={(e) => setForm((f) => ({ ...f, limitLabel: e.target.value }))} placeholder="até 10 barbeiros" />
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+            Módulos incluídos <span style={{ color: T.mutedHi, textTransform: "none", fontWeight: 400 }}>(Agendamento e CRM Básico são sempre incluídos)</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+            {PLAN_OPTIONAL_MODULES.map((m) => {
+              const on = form.modules.includes(m);
+              return (
+                <div key={m} onClick={() => toggleModulo(m)} style={{
+                  padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                  border: `1.5px solid ${on ? T.lime : T.border}`,
+                  background: on ? T.limeSoft : T.surface,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <span style={{ fontSize: 12, color: on ? T.lime : T.muted, fontWeight: on ? 600 : 400 }}>{m}</span>
+                  <div style={{ width: 30, height: 16, borderRadius: 8, background: on ? T.lime : T.border, position: "relative", flexShrink: 0 }}>
+                    <div style={{ position: "absolute", top: 2, left: on ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: on ? T.bg : T.muted }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {editing !== "new" && (
+            <div onClick={() => setForm((f) => ({ ...f, active: !f.active }))} style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 18 }}>
+              <div style={{ width: 32, height: 18, borderRadius: 9, background: form.active ? T.lime : T.border, position: "relative" }}>
+                <div style={{ position: "absolute", top: 3, left: form.active ? 15 : 3, width: 12, height: 12, borderRadius: "50%", background: form.active ? T.bg : "#555", transition: "left 0.2s" }} />
+              </div>
+              <span style={{ fontSize: 12, color: form.active ? T.success : T.muted }}>{form.active ? "Ativo" : "Inativo"}</span>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <div onClick={saving ? undefined : save} style={{ background: T.lime, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Salvar"}</div>
+            <div onClick={() => setEditing(null)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted, marginBottom: 28 }}>Carregando…</div>
+      ) : planosOrdenados.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted, marginBottom: 28 }}>Nenhum plano cadastrado ainda.</div>
+      ) : (
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 28 }}>
+          {planosOrdenados.map((p) => {
+            const cor = PLAN_COLOR[p.code] || T.mutedHi;
+            return (
+              <div key={p.id} onClick={() => startEdit(p)} style={{
+                flex: 1, minWidth: 190, background: T.card, border: `1.5px solid ${p.code === "pro" ? cor : T.border}`,
+                borderRadius: 14, padding: 20, position: "relative", overflow: "hidden", cursor: "pointer", opacity: p.active ? 1 : 0.5,
+              }}>
+                {p.code === "pro" && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: cor }} />}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: cor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{p.name}</div>
+                  {!p.active && <Badge color={T.muted} small>inativo</Badge>}
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: T.text, marginBottom: 4 }}>{p.priceCents != null ? `R$ ${(p.priceCents / 100).toFixed(2).replace(".", ",")}` : "Negociado"}</div>
+                {p.priceCents != null && <div style={{ fontSize: 11, color: T.muted, marginBottom: 14 }}>/mês por barbearia</div>}
+                <div style={{ fontSize: 12, color: T.mutedHi, marginBottom: 6 }}>• {p.limitLabel || "sem limite definido"}</div>
+                <div style={{ fontSize: 12, color: T.mutedHi }}>• {p.modules.length + PLAN_CORE_MODULES.length} módulos incluídos</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {planosOrdenados.length > 0 && (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 14 }}>Comparativo de módulos por plano</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                  <th style={{ padding: "8px 0", textAlign: "left", fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase" }}>Módulo</th>
+                  {planosOrdenados.map((p) => <th key={p.id} style={{ padding: "8px 16px", fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase" }}>{p.name}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {[...PLAN_CORE_MODULES.map((m) => [m, true]), ...PLAN_OPTIONAL_MODULES.map((m) => [m, false])].map(([mod, sempreOn]) => (
+                  <tr key={mod} style={{ borderBottom: `1px solid ${T.border}22` }}>
+                    <td style={{ padding: "10px 0", fontSize: 13, color: T.text }}>{mod}</td>
+                    {planosOrdenados.map((p) => {
+                      const on = sempreOn || (p.modules || []).includes(mod);
+                      return (
+                        <td key={p.id} style={{ padding: "10px 16px", textAlign: "center", fontSize: 14 }}>
+                          {on ? <span style={{ color: T.success }}>✓</span> : <span style={{ color: T.muted }}>✕</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

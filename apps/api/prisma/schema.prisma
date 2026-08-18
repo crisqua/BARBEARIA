@@ -18,6 +18,24 @@ datasource db {
 // `role` é VARCHAR(20) no banco (não enum Postgres), conforme seção 5.1 do CLAUDE.md —
 // valores válidos: super_admin | admin | barbeiro | cliente, validados na camada de aplicação.
 
+// Catálogo de planos da plataforma — sem tenant_id de propósito (não é dado
+// de tenant, é dado da incubadora, mesmo raciocínio de `tenants` na seção
+// 6.4 do CLAUDE.md). `code` é fixo (trial|pro|enterprise, decisão de
+// negócio já tomada) e imutável após criado; nome/preço/limite/módulos
+// ficam editáveis pela tela de Planos & Preços.
+model Plan {
+  id         String   @id @default(uuid()) @db.Uuid
+  code       String   @unique @db.VarChar(20)
+  name       String   @db.VarChar(255)
+  priceCents Int?     @map("price_cents")
+  limitLabel String?  @map("limit_label") @db.VarChar(255)
+  modules    Json     @default("[]")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("plans")
+}
+
 model Tenant {
   id            String   @id @default(uuid()) @db.Uuid
   slug          String   @unique @db.VarChar(63)
