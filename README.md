@@ -1,42 +1,38 @@
-# Barberaria — Protótipos
+# Barberaria — Monorepo
 
-Monorepo com os protótipos interativos do sistema White Label Multitenant para Barbearias.
+Sistema White Label Multitenant para Barbearias (Incubadora → Barbearia/tenant → Cliente final).
+Ver `CLAUDE.md` para arquitetura, escopo do MVP e regras de segurança.
 
 ## Estrutura
 
 ```
 BARBEARIA/
 ├── apps/
-│   ├── cliente-app/         # App do cliente final (agendamento, planos, loja)
-│   └── painel-barbearia/    # Painel de administração da barbearia
+│   ├── api/                   # Backend NestJS + Prisma + PostgreSQL (RLS por tenant)
+│   ├── cliente-app/           # App do cliente final (agendamento)
+│   ├── painel-barbearia/      # Painel de administração da barbearia (conectado à API)
+│   └── admin-desenvolvain/    # Painel master da incubadora (super_admin, conectado à API)
+├── admin-barbearia.md         # Guia de reprodução do protótipo do painel-barbearia
+├── admin-desenvolvain.md      # Plano de build (sprints) do painel master
 └── README.md
 ```
 
 ## Como rodar localmente (VSCode)
 
-Cada app é independente, com seu próprio `package.json`. Abra o terminal integrado do VSCode dentro da pasta do app que quiser rodar:
+Cada app é independente, com seu próprio `package.json`. A API precisa estar rodando (porta 3000)
+para os três frontends funcionarem de verdade — ver `apps/api/README` ou `CLAUDE.md` seção 9 para
+setup do backend (Postgres local, `.env`, migrations).
 
 ```bash
-cd apps/cliente-app
-npm install
-npm run dev
+cd apps/api && npm install && npm run start:dev      # http://localhost:3000
+cd apps/cliente-app && npm install && npm run dev     # http://localhost:5173
+cd apps/painel-barbearia && npm install && npm run dev # http://localhost:5174
+cd apps/admin-desenvolvain && npm install && npm run dev # http://localhost:5175
 ```
 
-```bash
-cd apps/painel-barbearia
-npm install
-npm run dev
-```
+## Stack
 
-- **App Cliente** roda por padrão em `http://localhost:5173`
-- **Painel Barbearia** roda por padrão em `http://localhost:5174`
-
-## Stack dos protótipos
-
-- React 18 + Vite
-- Estilização inline (tokens de cor centralizados no topo de cada `App.jsx`)
-- Estes são protótipos de interface (mock/estático) — ainda não conectados a um backend real.
-
-## Próximos passos
-
-Ver documentação de arquitetura técnica e plano de projeto no repositório de documentação do produto (não incluído neste repo de protótipos).
+- Backend: NestJS + Prisma + PostgreSQL (RLS nativo por tenant)
+- Frontends: React 18 + Vite, estilização inline (tokens de cor centralizados no topo de cada `App.jsx`)
+- `cliente-app` e `painel-barbearia` já conectados à API real; `admin-desenvolvain` em conexão
+  incremental por sprint (ver `admin-desenvolvain.md`).

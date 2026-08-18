@@ -11,6 +11,8 @@ Este arquivo deve ficar salvo como `CLAUDE.md` na raiz do repositório. O Claude
 - Status `needs_reschedule` em `appointments`, gerado automaticamente quando um profissional com agendamentos futuros é inativado.
 - Bug real corrigido (não é decisão nova, é fix): o corte de "horário já passado" comparava `Date.now()` (UTC real do processo) contra `starts_at` (tratado como hora local da barbearia sem conversão, seção 4 "decisões adiadas"). Em fuso diferente de UTC isso escondia/liberava horários errados. Corrigido com um helper `nowInBarbershopTime()` que usa timezone fixo (`America/Sao_Paulo`) via `Intl`, tanto no backend (`common/time.util.ts`) quanto duplicado nos dois frontends — nenhuma mudança de escopo, só a comparação ficou consistente com o resto do sistema.
 
+**Revisão (2026-08-18):** terceira entidade do sistema (seção 1) ganhou implementação própria — o **Painel Master da Incubadora**, `apps/admin-desenvolvain`. Nasceu como protótipo visual aprovado (mock, mesmo espírito de `admin-barbearia.md`), depois movido para dentro deste monorepo (antes era repositório separado). Plano de build completo em 10 sprints, com decisões de escopo explícitas (billing/planos/repasses ainda não implementados — exigem confirmação antes de cada sprint), em `admin-desenvolvain.md`. Sprint 1 concluído: login de super_admin + CRUD de tenants (`/v1/admin/tenants`, já existente no backend) conectado de verdade, substituindo o array mockado do protótipo. Consome a API em `apps/api` do mesmo jeito que `painel-barbearia` (JWT + refresh cookie httpOnly), porta de dev `5175` — `CORS_ORIGIN` já inclui essa origem.
+
 ---
 
 ## 1. O que é o projeto
