@@ -83,3 +83,6 @@ export const createTenant = (data) => apiFetch("/v1/admin/tenants", { method: "P
 
 export const updateTenant = (id, data) =>
   apiFetch(`/v1/admin/tenants/${id}`, { method: "PATCH", body: data });
+
+// ─── Dashboard ───────────────────────────────────────────
+export const getDashboardOverview = () => apiFetch("/v1/admin/dashboard/overview");

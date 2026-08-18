@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   createTenant,
   getAccessToken,
+  getDashboardOverview,
   getTenant,
   listTenants,
   login as apiLogin,
@@ -274,71 +275,91 @@ const Sidebar = ({ active, setActive, user, onLogout }) => (
 // ────────────────────────────────────────────────────────
 // TELA: DASHBOARD
 // ────────────────────────────────────────────────────────
+// Dado de exemplo — vira real só se investirmos numa tabela de auditoria (fora
+// do escopo do plano de sprints atual, ver admin-desenvolvain.md seção 7).
+const atividadesExemplo = [
+  { acao: "Nova barbearia criada", detalhe: "Studio Cuts", tempo: "há 2h" },
+  { acao: "Plano atualizado", detalhe: "Dom Barbeiro → Pro", tempo: "há 5h" },
+  { acao: "Trial expirado", detalhe: "Vintage Barber", tempo: "há 1d" },
+  { acao: "Pagamento recebido", detalhe: "Barberaria · R$ 299", tempo: "há 2d" },
+  { acao: "Suporte aberto", detalhe: "Corte Fino → agenda", tempo: "há 2d" },
+];
+
 const Dashboard = ({ setActive }) => {
-  const barbearias = [
-    { nome: "Barberaria", slug: "barberaria", plano: "Pro", mrr: "R$ 299", barbeiros: 4, status: "ativo", trend: "+12%" },
-    { nome: "Corte Fino", slug: "cortefino", plano: "Starter", mrr: "R$ 99", barbeiros: 2, status: "ativo", trend: "+3%" },
-    { nome: "Dom Barbeiro", slug: "dombarbeiro", plano: "Pro", mrr: "R$ 299", barbeiros: 3, status: "ativo", trend: "+8%" },
-    { nome: "Studio Cuts", slug: "studioCuts", plano: "Trial", mrr: "—", barbeiros: 1, status: "trial", trend: "—" },
-    { nome: "Vintage Barber", slug: "vintage", plano: "Starter", mrr: "R$ 99", barbeiros: 2, status: "suspenso", trend: "—" },
-  ];
-  const atividades = [
-    { acao: "Nova barbearia criada", detalhe: "Studio Cuts", tempo: "há 2h" },
-    { acao: "Plano atualizado", detalhe: "Dom Barbeiro → Pro", tempo: "há 5h" },
-    { acao: "Trial expirado", detalhe: "Vintage Barber", tempo: "há 1d" },
-    { acao: "Pagamento recebido", detalhe: "Barberaria · R$ 299", tempo: "há 2d" },
-    { acao: "Suporte aberto", detalhe: "Corte Fino → agenda", tempo: "há 2d" },
-  ];
+  const [overview, setOverview] = useState(null);
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getDashboardOverview(), listTenants()])
+      .then(([ov, tenantsRes]) => {
+        setOverview(ov);
+        setTenants(
+          [...tenantsRes.items].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5),
+        );
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-0.02em" }}>Visão Geral</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Junho 2025 · Plataforma Barberaria</div>
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Plataforma Barberaria</div>
       </div>
 
       {/* Stats */}
       <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-        <Stat label="MRR Total" value="R$ 796" sub="+18% vs maio" trend="up" />
-        <Stat label="Barbearias" value="5" sub="4 ativas · 1 trial" />
-        <Stat label="Barbeiros na rede" value="12" sub="+2 este mês" trend="up" />
-        <Stat label="Agendamentos/mês" value="300" sub="em toda a rede" />
-        <Stat label="Churn" value="0%" sub="0 cancelamentos" accent={T.success} />
+        <Stat label="MRR Total" value="—" sub="chega no Sprint 6" />
+        <Stat
+          label="Barbearias"
+          value={overview ? String(overview.tenants.total) : "…"}
+          sub={overview ? `${overview.tenants.active} ativas · ${overview.tenants.suspended} suspensas` : undefined}
+        />
+        <Stat label="Barbeiros na rede" value={overview ? String(overview.barbersActive) : "…"} />
+        <Stat label="Agendamentos/mês" value={overview ? String(overview.appointmentsThisMonth) : "…"} sub="em toda a rede" />
+        <Stat label="Churn" value="—" sub="chega no Sprint 6" />
       </div>
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
         {/* Tabela de barbearias */}
         <div style={{ flex: 3, minWidth: 340 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Barbearias</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Barbearias mais recentes</div>
             <Btn variant="ghost" size="sm" onClick={() => setActive("onboarding")}>+ Nova</Btn>
           </div>
-          <Table
-            cols={["Barbearia", "Plano", "MRR", "Barbeiros", "Status"]}
-            rows={barbearias.map((b, i) => (
-              <TRow key={i} last={i === barbearias.length - 1} cells={[
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Avatar name={b.nome} size={28} />
-                  <div>
-                    <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{b.nome}</div>
-                    <div style={{ fontSize: 10, color: T.muted }}>{b.slug}.barberaria.app</div>
-                  </div>
-                </div>,
-                <Badge color={b.plano === "Pro" ? T.lime : b.plano === "Trial" ? T.warning : T.mutedHi}>{b.plano}</Badge>,
-                <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{b.mrr}</span>,
-                <span style={{ fontSize: 13, color: T.muted }}>{b.barbeiros}</span>,
-                <Badge color={b.status === "ativo" ? T.success : b.status === "trial" ? T.warning : T.danger}>{b.status}</Badge>,
-              ]} />
-            ))}
-          />
+          {loading ? (
+            <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+          ) : (
+            <Table
+              cols={["Barbearia", "Slug", "Criada em", "Status"]}
+              rows={tenants.map((t, i) => {
+                const badge = statusBadge(t.status);
+                return (
+                  <TRow key={t.id} last={i === tenants.length - 1} cells={[
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={t.name} size={28} />
+                      <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.name}</div>
+                    </div>,
+                    <span style={{ fontSize: 13, color: T.muted }}>{t.slug}</span>,
+                    <span style={{ fontSize: 13, color: T.muted }}>{formatDate(t.createdAt)}</span>,
+                    <Badge color={badge.color}>{badge.label}</Badge>,
+                  ]} />
+                );
+              })}
+            />
+          )}
         </div>
 
         {/* Atividade recente */}
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 12 }}>Atividade recente</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Atividade recente</div>
+            <Badge color={T.mutedHi} small>exemplo</Badge>
+          </div>
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-            {atividades.map((a, i) => (
-              <div key={i} style={{ padding: "12px 16px", borderBottom: i < atividades.length - 1 ? `1px solid ${T.border}22` : "none" }}>
+            {atividadesExemplo.map((a, i) => (
+              <div key={i} style={{ padding: "12px 16px", borderBottom: i < atividadesExemplo.length - 1 ? `1px solid ${T.border}22` : "none" }}>
                 <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{a.acao}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
                   <span style={{ fontSize: 11, color: T.lime }}>{a.detalhe}</span>
