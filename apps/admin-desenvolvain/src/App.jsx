@@ -46,14 +46,32 @@ const T = {
   info:      "#60A5FA",
 };
 
+/** Mistura um hex com branco em `percent`% — usado só pra derivar a
+ * hierarquia de superfícies (surface/card/border) a partir do "Fundo"
+ * escolhido, sem precisar de conversão HSL. */
+function lighten(hex, percent) {
+  const num = parseInt(hex.slice(1), 16);
+  const r = (num >> 16) & 0xff, g = (num >> 8) & 0xff, b = num & 0xff;
+  const mix = (c) => Math.round(c + (255 - c) * (percent / 100));
+  const toHex = (c) => c.toString(16).padStart(2, "0");
+  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+
 /**
  * Re-temeia o painel inteiro a partir das configurações da plataforma —
  * muta os tokens compartilhados em vez de introduzir Context (T é lido
  * direto por todo componente do arquivo). Só bg/acento são configuráveis
- * de propósito (ver admin-desenvolvain.md) — o resto da paleta fica fixo.
+ * de propósito (ver admin-desenvolvain.md) — o resto da paleta fica fixo,
+ * mas surface/card/border precisam ser DERIVADOS do bg (não só o bg em si),
+ * senão Sidebar/TopBar (que usam T.surface, não T.bg) não mudam de cor.
  */
 function applyTheme(settings) {
   if (!settings) return;
+  T.surface = lighten(settings.bgColor, 6);
+  T.card = lighten(settings.bgColor, 10);
+  T.cardHover = lighten(settings.bgColor, 14);
+  T.border = lighten(settings.bgColor, 18);
+  T.borderHi = lighten(settings.bgColor, 24);
   T.bg = settings.bgColor;
   T.lime = settings.accentColor;
   T.limeSoft = settings.accentColor + "14";
@@ -545,6 +563,9 @@ const Barbearias = () => {
 // ────────────────────────────────────────────────────────
 // TELA: ONBOARDING (nova barbearia)
 // ────────────────────────────────────────────────────────
+const LOGO_ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/svg+xml"];
+const LOGO_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+
 const Onboarding = ({ setActive }) => {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ nome: "", slug: "", planId: "", cor1: "#C9A84C", cor2: "#0F0F0F", contato: "", adminNome: "", adminSenha: "" });
@@ -552,7 +573,34 @@ const Onboarding = ({ setActive }) => {
   const [loadingPlanos, setLoadingPlanos] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null);
+  const [logoError, setLogoError] = useState("");
   const STEPS = ["Dados", "Identidade", "Módulos", "Confirmar"];
+
+  useEffect(() => {
+    if (!logoFile) { setLogoPreviewUrl(null); return; }
+    const url = URL.createObjectURL(logoFile);
+    setLogoPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [logoFile]);
+
+  const handleLogoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoError("");
+    if (!LOGO_ACCEPTED_TYPES.includes(file.type)) {
+      setLogoError("Formato não suportado — use PNG, JPG/JPEG ou SVG.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > LOGO_MAX_SIZE_BYTES) {
+      setLogoError("Arquivo muito grande (máximo 2MB).");
+      e.target.value = "";
+      return;
+    }
+    setLogoFile(file);
+  };
 
   useEffect(() => {
     listPlans()
@@ -648,11 +696,27 @@ const Onboarding = ({ setActive }) => {
 
         {step === 2 && (
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
-            <div style={{ background: T.surface, border: `2px dashed ${T.border}`, borderRadius: 10, padding: 32, textAlign: "center", cursor: "pointer" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>✂</div>
-              <div style={{ fontSize: 13, color: T.muted, marginBottom: 6 }}>Logotipo da barbearia</div>
-              <div style={{ fontSize: 11, color: T.lime }}>Selecionar arquivo (PNG/SVG)</div>
-            </div>
+            <label style={{ background: T.surface, border: `2px dashed ${T.border}`, borderRadius: 10, padding: 32, textAlign: "center", cursor: "pointer", display: "block" }}>
+              <input
+                type="file"
+                accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
+                onChange={handleLogoChange}
+                style={{ display: "none" }}
+              />
+              {logoPreviewUrl ? (
+                <img src={logoPreviewUrl} alt="Preview do logotipo" style={{ maxHeight: 56, maxWidth: "100%", marginBottom: 8, borderRadius: 6 }} />
+              ) : (
+                <div style={{ fontSize: 32, marginBottom: 8 }}>✂</div>
+              )}
+              <div style={{ fontSize: 13, color: T.muted, marginBottom: 6 }}>{logoFile ? logoFile.name : "Logotipo da barbearia"}</div>
+              <div style={{ fontSize: 11, color: T.lime }}>{logoFile ? "Trocar arquivo" : "Selecionar arquivo (PNG, JPG ou SVG)"}</div>
+              {logoError && <div style={{ fontSize: 11, color: T.danger, marginTop: 8 }}>{logoError}</div>}
+            </label>
+            {logoFile && (
+              <div style={{ fontSize: 11, color: T.muted, marginTop: -12 }}>
+                O upload de verdade (armazenamento na nuvem) ainda não está implementado — por enquanto isso só confirma o arquivo antes de criar a barbearia.
+              </div>
+            )}
             <div style={{ display: "flex", gap: 16 }}>
               {[["Cor primária", "cor1"], ["Cor de fundo", "cor2"]].map(([label, key]) => (
                 <div key={key} style={{ flex: 1 }}>
