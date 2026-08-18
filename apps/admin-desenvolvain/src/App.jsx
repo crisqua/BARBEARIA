@@ -7,12 +7,14 @@ import {
   getTenant,
   getUsers,
   listPlans,
+  listSubscriptions,
   listTenants,
   login as apiLogin,
   logout as apiLogout,
   setAccessToken,
   updatePlan,
   updateTenant,
+  updateTenantSubscription,
   whoami,
 } from "./api/client";
 
@@ -523,17 +525,33 @@ const Barbearias = () => {
 // ────────────────────────────────────────────────────────
 const Onboarding = ({ setActive }) => {
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ nome: "", slug: "", plano: "pro", cor1: "#C9A84C", cor2: "#0F0F0F", contato: "", adminNome: "", adminSenha: "", modulos: ["Agendamento", "CRM Básico"] });
+  const [form, setForm] = useState({ nome: "", slug: "", planId: "", cor1: "#C9A84C", cor2: "#0F0F0F", contato: "", adminNome: "", adminSenha: "" });
+  const [planos, setPlanos] = useState([]);
+  const [loadingPlanos, setLoadingPlanos] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const modulos = ["Comissões", "Assinaturas", "Clube de Clientes", "Venda de Produtos", "Dashboard Avançado", "WhatsApp/SMS", "Marketing", "Estoque"];
-  const toggleMod = m => setForm(f => ({ ...f, modulos: f.modulos.includes(m) ? f.modulos.filter(x => x !== m) : [...f.modulos, m] }));
   const STEPS = ["Dados", "Identidade", "Módulos", "Confirmar"];
+
+  useEffect(() => {
+    listPlans()
+      .then((res) => {
+        const ativos = res.items.filter((p) => p.active);
+        setPlanos(ativos);
+        if (ativos.length > 0) setForm((f) => ({ ...f, planId: ativos[0].id }));
+      })
+      .finally(() => setLoadingPlanos(false));
+  }, []);
+
+  const planoEscolhido = planos.find((p) => p.id === form.planId);
 
   const criarBarbearia = async () => {
     setError("");
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.slug) || form.slug.length < 2) {
       setError("Slug deve ser minúsculo, alfanumérico, com hífens entre segmentos.");
+      return;
+    }
+    if (!form.planId) {
+      setError("Escolha um plano.");
       return;
     }
     setSaving(true);
@@ -544,6 +562,7 @@ const Onboarding = ({ setActive }) => {
         primaryColor: form.cor1 || undefined,
         secondaryColor: form.cor2 || undefined,
         admin: { name: form.adminNome, email: form.contato, password: form.adminSenha },
+        planId: form.planId,
       });
       setActive("barbearias");
     } catch (e) {
@@ -594,8 +613,14 @@ const Onboarding = ({ setActive }) => {
               </div>
             </div>
             <Input label="Senha inicial do administrador" type="password" value={form.adminSenha} onChange={e => setForm(f => ({ ...f, adminSenha: e.target.value }))} placeholder="mínimo 8 caracteres" />
-            <Select label="Plano inicial" value={form.plano} onChange={e => setForm(f => ({ ...f, plano: e.target.value }))}
-              options={[{ value: "trial", label: "Trial (14 dias grátis)" }, { value: "starter", label: "Starter — R$ 99/mês" }, { value: "pro", label: "Pro — R$ 299/mês" }, { value: "enterprise", label: "Enterprise — Negociado" }]} />
+            {loadingPlanos ? (
+              <div style={{ fontSize: 12, color: T.muted }}>Carregando planos…</div>
+            ) : planos.length === 0 ? (
+              <ErrorBox>Nenhum plano ativo cadastrado ainda — cadastre em Planos & Preços antes de criar uma barbearia.</ErrorBox>
+            ) : (
+              <Select label="Plano inicial" value={form.planId} onChange={e => setForm(f => ({ ...f, planId: e.target.value }))}
+                options={planos.map((p) => ({ value: p.id, label: `${p.name} — ${p.priceCents != null ? `R$ ${(p.priceCents / 100).toFixed(2).replace(".", ",")}/mês` : "negociado"}` }))} />
+            )}
           </div>
         )}
 
@@ -633,28 +658,27 @@ const Onboarding = ({ setActive }) => {
 
         {step === 3 && (
           <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 28 }}>
-            <div style={{ fontSize: 13, color: T.muted, marginBottom: 6 }}>Módulos incluídos no plano <Badge color={T.lime}>{form.plano}</Badge></div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 6 }}>
+              Módulos incluídos no plano {planoEscolhido ? <Badge color={T.lime}>{planoEscolhido.name}</Badge> : "—"}
+            </div>
             <div style={{ background: T.surface, borderRadius: 8, padding: 12, marginBottom: 20, display: "flex", gap: 8, alignItems: "center" }}>
               <span>ℹ</span>
-              <div style={{ fontSize: 12, color: T.mutedHi }}>Core sempre ativo: <strong style={{ color: T.text }}>Agendamento · CRM Básico · Perfil do Profissional</strong></div>
+              <div style={{ fontSize: 12, color: T.mutedHi }}>
+                O módulo vem do plano escolhido no passo 1 — pra mudar, ajuste o plano em <strong style={{ color: T.text }}>Planos & Preços</strong>.
+                Core sempre ativo: <strong style={{ color: T.text }}>{PLAN_CORE_MODULES.join(" · ")}</strong>.
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {modulos.map(m => {
-                const on = form.modulos.includes(m);
-                return (
-                  <div key={m} onClick={() => toggleMod(m)} style={{
-                    padding: "12px 14px", borderRadius: 10, cursor: "pointer",
-                    border: `1.5px solid ${on ? T.lime : T.border}`,
-                    background: on ? T.limeSoft : T.surface,
-                    display: "flex", justifyContent: "space-between", alignItems: "center"
-                  }}>
-                    <span style={{ fontSize: 12, color: on ? T.lime : T.muted, fontWeight: on ? 600 : 400 }}>{m}</span>
-                    <div style={{ width: 30, height: 16, borderRadius: 8, background: on ? T.lime : T.border, position: "relative", flexShrink: 0 }}>
-                      <div style={{ position: "absolute", top: 2, left: on ? 14 : 2, width: 12, height: 12, borderRadius: "50%", background: on ? T.bg : T.muted }} />
-                    </div>
-                  </div>
-                );
-              })}
+              {[...PLAN_CORE_MODULES, ...(planoEscolhido?.modules || [])].map((m) => (
+                <div key={m} style={{
+                  padding: "12px 14px", borderRadius: 10,
+                  border: `1.5px solid ${T.lime}`, background: T.limeSoft,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <span style={{ fontSize: 12, color: T.lime, fontWeight: 600 }}>{m}</span>
+                  <span style={{ color: T.lime, fontSize: 14 }}>✓</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -666,9 +690,9 @@ const Onboarding = ({ setActive }) => {
               {[
                 ["Nome", form.nome || "—"],
                 ["URL", `${form.slug || "—"}.barberaria.app`],
-                ["Plano", form.plano],
+                ["Plano", planoEscolhido?.name || "—"],
                 ["Admin", `${form.adminNome || "—"} · ${form.contato || "—"}`],
-                ["Módulos ativos", `${form.modulos.length + 3} módulos`],
+                ["Módulos ativos", `${PLAN_CORE_MODULES.length + (planoEscolhido?.modules?.length || 0)} módulos`],
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: `1px solid ${T.border}22` }}>
                   <span style={{ fontSize: 12, color: T.muted }}>{k}</span>
@@ -677,7 +701,6 @@ const Onboarding = ({ setActive }) => {
               ))}
             </div>
             {error && <ErrorBox>{error}</ErrorBox>}
-            <div style={{ fontSize: 11, color: T.muted }}>Módulos e plano ainda não são persistidos de verdade — chegam nos Sprints 4/5.</div>
             <div onClick={saving ? undefined : criarBarbearia} style={{ background: T.lime, borderRadius: 8, padding: "12px 20px", textAlign: "center", cursor: saving ? "default" : "pointer", fontSize: 14, fontWeight: 800, color: T.bg, opacity: saving ? 0.6 : 1 }}>
               {saving ? "Criando..." : "Criar Barbearia"}
             </div>
@@ -1121,41 +1144,90 @@ const Releases = () => {
 // TELA: ASSINATURAS
 // ────────────────────────────────────────────────────────
 const Assinaturas = () => {
-  const assinaturas = [
-    { barbearia: "Barberaria", plano: "Pro", valor: "R$ 299", ciclo: "mensal", inicio: "Jan/2025", proxima: "01/07/2025", status: "ativo" },
-    { barbearia: "Corte Fino", plano: "Starter", valor: "R$ 99", ciclo: "mensal", inicio: "Mar/2025", proxima: "03/07/2025", status: "ativo" },
-    { barbearia: "Dom Barbeiro", plano: "Pro", valor: "R$ 299", ciclo: "mensal", inicio: "Fev/2025", proxima: "05/07/2025", status: "ativo" },
-    { barbearia: "Vintage Barber", plano: "Starter", valor: "R$ 99", ciclo: "mensal", inicio: "Nov/2024", proxima: "10/05/2025", status: "inadimplente" },
-    { barbearia: "Studio Cuts", plano: "Trial", valor: "—", ciclo: "trial", inicio: "Jun/2025", proxima: "24/06/2025", status: "trial" },
-  ];
+  const [items, setItems] = useState([]);
+  const [planos, setPlanos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actingId, setActingId] = useState(null);
+
+  const load = () =>
+    Promise.all([listSubscriptions(), listPlans()]).then(([subsRes, plansRes]) => {
+      setItems(subsRes.items);
+      setPlanos(plansRes.items.filter((p) => p.active));
+    });
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+
+  const trocarPlano = async (tenantId, planId) => {
+    setActingId(tenantId);
+    try {
+      await updateTenantSubscription(tenantId, { planId });
+      await load();
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const toggleStatus = async (tenantId, statusAtual) => {
+    setActingId(tenantId);
+    try {
+      await updateTenantSubscription(tenantId, { status: statusAtual === "active" ? "cancelled" : "active" });
+      await load();
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const comAssinatura = items.filter((i) => i.subscription).length;
+  const ativas = items.filter((i) => i.subscription?.status === "active").length;
+  const canceladas = items.filter((i) => i.subscription?.status === "cancelled").length;
+  const semAssinatura = items.length - comAssinatura;
+
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Assinaturas</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Controle de contratos e cobranças</div>
+        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Qual plano cada barbearia está usando</div>
       </div>
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-        <Stat label="Assinaturas ativas" value="3" sub="pagantes" />
-        <Stat label="MRR" value="R$ 697" sub="recorrente confirmado" />
-        <Stat label="Inadimplentes" value="1" sub="cobrar urgente" accent={T.danger} />
-        <Stat label="Trials" value="1" sub="vence em 13 dias" accent={T.warning} />
+        <Stat label="Ativas" value={String(ativas)} />
+        <Stat label="Canceladas" value={String(canceladas)} accent={T.danger} />
+        <Stat label="Sem assinatura" value={String(semAssinatura)} sub="tenants antigos, pré-Sprint 5" accent={T.warning} />
+        <Stat label="MRR" value="—" sub="chega no Sprint 6" />
       </div>
-      <Table
-        cols={["Barbearia", "Plano", "Valor", "Ciclo", "Próxima cobrança", "Status"]}
-        rows={assinaturas.map((a, i) => (
-          <TRow key={i} last={i === assinaturas.length - 1} cells={[
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Avatar name={a.barbearia} size={28} />
-              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{a.barbearia}</span>
-            </div>,
-            <Badge color={a.plano === "Pro" ? T.lime : a.plano === "Trial" ? T.warning : T.mutedHi}>{a.plano}</Badge>,
-            <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{a.valor}</span>,
-            <span style={{ fontSize: 12, color: T.muted }}>{a.ciclo}</span>,
-            <span style={{ fontSize: 13, color: T.muted }}>{a.proxima}</span>,
-            <Badge color={a.status === "ativo" ? T.success : a.status === "trial" ? T.warning : T.danger}>{a.status}</Badge>,
-          ]} />
-        ))}
-      />
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : (
+        <Table
+          cols={["Barbearia", "Plano", "Desde", "Status", ""]}
+          rows={items.map((i, idx) => {
+            const acting = actingId === i.tenant.id;
+            return (
+              <TRow key={i.tenant.id} last={idx === items.length - 1} cells={[
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Avatar name={i.tenant.name} size={28} />
+                  <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{i.tenant.name}</span>
+                </div>,
+                <select
+                  value={i.subscription?.planId || ""}
+                  disabled={acting}
+                  onChange={(e) => trocarPlano(i.tenant.id, e.target.value)}
+                  style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 12, outline: "none" }}
+                >
+                  {!i.subscription && <option value="">— sem plano —</option>}
+                  {planos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>,
+                <span style={{ fontSize: 13, color: T.muted }}>{i.subscription ? formatDate(i.subscription.startedAt) : "—"}</span>,
+                i.subscription ? <Badge color={i.subscription.status === "active" ? T.success : T.danger}>{i.subscription.status === "active" ? "ativo" : "cancelado"}</Badge> : <Badge color={T.warning}>sem assinatura</Badge>,
+                i.subscription ? (
+                  <span onClick={acting ? undefined : () => toggleStatus(i.tenant.id, i.subscription.status)} style={{ fontSize: 12, color: i.subscription.status === "active" ? T.danger : T.lime, cursor: acting ? "default" : "pointer" }}>
+                    {i.subscription.status === "active" ? "Cancelar" : "Reativar"}
+                  </span>
+                ) : null,
+              ]} />
+            );
+          })}
+        />
+      )}
     </div>
   );
 };

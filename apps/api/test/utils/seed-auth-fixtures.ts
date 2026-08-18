@@ -86,6 +86,7 @@ export async function cleanupTenantWithUser(
     await tx.workingHour.deleteMany({ where: { tenantId } });
     await tx.professionalService.deleteMany({ where: { tenantId } });
     await tx.service.deleteMany({ where: { tenantId } });
+    await tx.subscription.deleteMany({ where: { tenantId } });
     await tx.user.deleteMany({ where: { tenantId } });
   });
   await prisma.tenant.delete({ where: { id: tenantId } });

@@ -15,14 +15,17 @@ export class AdminTenantsService {
   ) {}
 
   /**
-   * Cria o tenant e o admin inicial na MESMA transação — se a criação do admin
-   * falhar, o tenant não fica órfão. `tenants` não tem RLS, então a criação do
-   * tenant funciona em qualquer contexto; para o INSERT em `users` (que tem
-   * FORCE RLS) precisamos do set_config manual aqui dentro, porque o tenant
-   * ainda não existia quando a transação começou — TenantContextService não
-   * serve nesse caso específico (ele assume um tenant_id já conhecido).
+   * Cria o tenant, o admin inicial E a assinatura na MESMA transação — se
+   * qualquer etapa falhar, nada fica pra trás. `tenants`/`plans` não têm RLS;
+   * para os INSERTs em `users` e `subscriptions` (RLS forçado) precisamos do
+   * set_config manual aqui dentro, porque o tenant ainda não existia quando a
+   * transação começou — TenantContextService não serve nesse caso específico
+   * (ele assume um tenant_id já conhecido).
    */
   async create(dto: CreateTenantDto) {
+    const plan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
+    if (!plan) throw new NotFoundException('Plano não encontrado.');
+
     const passwordHash = await hashPassword(dto.admin.password);
 
     try {
@@ -48,7 +51,11 @@ export class AdminTenantsService {
           },
         });
 
-        return { tenant, admin: { id: admin.id, email: admin.email } };
+        const subscription = await tx.subscription.create({
+          data: { tenantId: tenant.id, planId: dto.planId },
+        });
+
+        return { tenant, admin: { id: admin.id, email: admin.email }, subscription };
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {

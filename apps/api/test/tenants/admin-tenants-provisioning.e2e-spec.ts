@@ -19,6 +19,7 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
   let tenantContext: TenantContextService;
   let superAdmin: { userId: string; email: string; password: string };
   let superAdminToken: string;
+  let planId: string;
   const createdTenantIds: string[] = [];
 
   beforeAll(async () => {
@@ -31,12 +32,19 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
       .post('/v1/auth/login')
       .send({ email: superAdmin.email, password: superAdmin.password });
     superAdminToken = loginRes.body.accessToken;
+
+    const plan = await prisma.plan.create({
+      data: { code: `test-${Date.now()}`, name: 'Plano de teste' },
+    });
+    planId = plan.id;
   });
 
   afterAll(async () => {
     for (const tenantId of createdTenantIds) {
       await cleanupTenantWithUser(prisma, tenantContext, tenantId).catch(() => {});
     }
+    await prisma.subscription.deleteMany({ where: { planId } }).catch(() => {});
+    await prisma.plan.delete({ where: { id: planId } }).catch(() => {});
     await cleanupSuperAdmin(prisma, superAdmin.userId);
     await app.close();
   });
@@ -50,6 +58,7 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
         slug,
         name: 'Barbearia Provisionada',
         admin: { name: 'Admin Inicial', email: `admin-${slug}@test.local`, password: 'senha-forte-123' },
+        planId,
       });
 
     expect(res.status).toBe(201);
@@ -94,6 +103,7 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
       slug,
       name: 'Original',
       admin: { name: 'Admin A', email: `a-${slug}@test.local`, password: 'senha-forte-123' },
+      planId,
     };
 
     const first = await request(app.getHttpServer())
@@ -132,6 +142,7 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
         slug,
         name: 'Barbearia a Suspender',
         admin: { name: 'Admin', email: `admin-${slug}@test.local`, password: 'senha-forte-123' },
+        planId,
       });
     createdTenantIds.push(created.body.tenant.id);
 

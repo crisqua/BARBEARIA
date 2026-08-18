@@ -33,6 +33,8 @@ model Plan {
   active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  subscriptions Subscription[]
+
   @@map("plans")
 }
 
@@ -51,8 +53,27 @@ model Tenant {
   professionalServices ProfessionalService[]
   workingHours         WorkingHour[]
   appointments         Appointment[]
+  subscription         Subscription?
 
   @@map("tenants")
+}
+
+// Dado do tenant (não da plataforma) — RLS normal, mesmo padrão de
+// services/appointments (decisão revista no Sprint 5, ver admin-desenvolvain.md).
+// 1 assinatura por tenant (tenantId único); trocar de plano só atualiza a
+// mesma linha, sem histórico por enquanto.
+model Subscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @unique @map("tenant_id") @db.Uuid
+  planId    String   @map("plan_id") @db.Uuid
+  status    String   @default("active") @db.VarChar(20)
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
 }
 
 model User {

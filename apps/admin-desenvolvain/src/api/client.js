@@ -99,3 +99,12 @@ export const listPlans = () => apiFetch("/v1/admin/plans");
 export const createPlan = (data) => apiFetch("/v1/admin/plans", { method: "POST", body: data });
 
 export const updatePlan = (id, data) => apiFetch(`/v1/admin/plans/${id}`, { method: "PATCH", body: data });
+
+// ─── Assinaturas ─────────────────────────────────────────
+export const listSubscriptions = (params = {}) => {
+  const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
+  return apiFetch(`/v1/admin/subscriptions?${query}`);
+};
+
+export const updateTenantSubscription = (tenantId, data) =>
+  apiFetch(`/v1/admin/tenants/${tenantId}/subscription`, { method: "PATCH", body: data });

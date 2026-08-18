@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 
 class InitialAdminDto {
   @IsString()
@@ -43,4 +43,7 @@ export class CreateTenantDto {
   @ValidateNested()
   @Type(() => InitialAdminDto)
   admin!: InitialAdminDto;
+
+  @IsUUID()
+  planId!: string;
 }
