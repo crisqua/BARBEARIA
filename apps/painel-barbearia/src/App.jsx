@@ -397,6 +397,15 @@ function Agenda() {
   const clientName = (id) => clients[id] || "—";
   const days = nextDays(14);
 
+  const [filterCliente, setFilterCliente] = useState("");
+  const [filterServico, setFilterServico] = useState("");
+  const [filterProfissional, setFilterProfissional] = useState("");
+  const hasFilter = filterCliente || filterServico || filterProfissional;
+
+  const visibleProfessionals = professionals.filter((p) =>
+    p.name.toLowerCase().includes(filterProfissional.trim().toLowerCase()),
+  );
+
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24 }}>
@@ -404,7 +413,7 @@ function Agenda() {
         <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{professionals.length} profissionais</div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 24, paddingBottom: 4 }}>
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 20, paddingBottom: 4 }}>
         {days.map((d) => {
           const active = dateKey(d) === dateKey(selectedDate);
           return (
@@ -421,13 +430,38 @@ function Agenda() {
         })}
       </div>
 
+      <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+        <input
+          value={filterCliente}
+          onChange={(e) => setFilterCliente(e.target.value)}
+          placeholder="Buscar cliente…"
+          style={{ flex: 1, minWidth: 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text }}
+        />
+        <input
+          value={filterServico}
+          onChange={(e) => setFilterServico(e.target.value)}
+          placeholder="Buscar serviço…"
+          style={{ flex: 1, minWidth: 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text }}
+        />
+        <input
+          value={filterProfissional}
+          onChange={(e) => setFilterProfissional(e.target.value)}
+          placeholder="Buscar profissional…"
+          style={{ flex: 1, minWidth: 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text }}
+        />
+      </div>
+
       {professionals.length === 0 ? (
         <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional cadastrado ainda.</div>
+      ) : visibleProfessionals.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional encontrado para essa busca.</div>
       ) : (
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          {professionals.map((p) => {
+          {visibleProfessionals.map((p) => {
             const items = appointments
               .filter((a) => a.professionalId === p.id)
+              .filter((a) => clientName(a.clientId).toLowerCase().includes(filterCliente.trim().toLowerCase()))
+              .filter((a) => svcName(a.serviceId).toLowerCase().includes(filterServico.trim().toLowerCase()))
               .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
             return (
               <div key={p.id} style={{ flex: 1, minWidth: 240, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
@@ -436,7 +470,11 @@ function Agenda() {
                   <span style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{p.name}</span>
                 </div>
                 {loading && <div style={{ padding: 14, fontSize: 12, color: T.muted }}>Carregando…</div>}
-                {!loading && items.length === 0 && <div style={{ padding: 14, fontSize: 12, color: T.muted }}>Sem agendamentos.</div>}
+                {!loading && items.length === 0 && (
+                  <div style={{ padding: 14, fontSize: 12, color: T.muted }}>
+                    {hasFilter ? "Nenhum resultado para essa busca." : "Sem agendamentos."}
+                  </div>
+                )}
                 {!loading && items.map((a, i) => (
                   <div key={a.id} style={{ padding: "10px 16px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
