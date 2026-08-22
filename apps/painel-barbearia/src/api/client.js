@@ -30,15 +30,18 @@ async function refreshAccessToken() {
 
 /** Wrapper de fetch: anexa o access token e tenta refresh automático (via cookie) numa 401. */
 export async function apiFetch(path, { method = "GET", body, skipAuthRetry = false } = {}) {
+  const isFormData = body instanceof FormData;
   const doFetch = (token) =>
     fetch(`${API_URL}${path}`, {
       method,
       credentials: "include",
       headers: {
-        "Content-Type": "application/json",
+        // FormData define seu próprio Content-Type (com boundary) — o browser
+        // só faz isso certo se a gente não fixar o header manualmente aqui.
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
     });
 
   let res = await doFetch(accessToken);
@@ -79,6 +82,12 @@ export const getUser = (id) => apiFetch(`/v1/users/${id}`);
 export const getMyTenant = () => apiFetch("/v1/tenants/me");
 
 export const updateMyTenant = (data) => apiFetch("/v1/tenants/me", { method: "PATCH", body: data });
+
+export const uploadTenantLogo = (file) => {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch("/v1/tenants/me/logo", { method: "POST", body: form });
+};
 
 // ─── Serviços ──────────────────────────────────────────
 export const listServices = () => apiFetch("/v1/services?pageSize=100");

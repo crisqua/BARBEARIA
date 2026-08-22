@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   assignService,
   createProfessional,
@@ -21,6 +21,7 @@ import {
   updateMyTenant,
   updateProfessional,
   updateService,
+  uploadTenantLogo,
 } from "./api/client";
 
 // ─── TOKENS (Barberaria) ──────────────────────────
@@ -135,7 +136,7 @@ const STATUS_LABEL = {
   scheduled: "agendado",
   completed: "concluído",
   cancelled: "cancelado",
-  needs_reschedule: "reagendar - prof. inativo",
+  needs_reschedule: "precisa reagendar",
 };
 const STATUS_COLOR = { scheduled: T.success, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
 
@@ -661,8 +662,12 @@ function Servicos() {
   };
 
   const toggleAtivo = async (s) => {
-    await updateService(s.id, { active: !s.active });
-    load();
+    const wasActive = s.active;
+    const res = await updateService(s.id, { active: !s.active });
+    await load();
+    if (wasActive && res.affectedAppointmentsCount > 0) {
+      window.alert(`VER PAINEL AGENDAMENTO. HÁ AGENDAMENTOS (${res.affectedAppointmentsCount}) que precisam ser reagendados com outro serviço.`);
+    }
   };
 
   return (
@@ -1565,9 +1570,12 @@ function Config() {
   const [cor1, setCor1] = useState("#C9A84C");
   const [cor2, setCor2] = useState("#0F0F0F");
   const [logoUrl, setLogoUrl] = useState("");
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     getMyTenant().then((t) => {
@@ -1578,12 +1586,29 @@ function Config() {
     });
   }, []);
 
+  const handleLogoFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setLogoUploading(true);
+    setLogoError("");
+    try {
+      const updated = await uploadTenantLogo(file);
+      setTenant(updated);
+      setLogoUrl(updated.logoUrl || "");
+    } catch (err) {
+      setLogoError(err.message || "Não foi possível enviar o logo.");
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     setError("");
     setSaved(false);
     try {
-      const updated = await updateMyTenant({ primaryColor: cor1, secondaryColor: cor2, ...(logoUrl ? { logoUrl } : {}) });
+      const updated = await updateMyTenant({ primaryColor: cor1, secondaryColor: cor2 });
       setTenant(updated);
       setSaved(true);
     } catch (e) {
@@ -1607,8 +1632,37 @@ function Config() {
           <div style={{ fontSize: 13, color: T.text }}>{tenant?.name}</div>
         </div>
         <div style={{ marginBottom: 16 }}>
-          <FieldLabel>Logo (URL)</FieldLabel>
-          <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…" style={fieldStyle} />
+          <FieldLabel>Logo</FieldLabel>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Logo"
+                style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${T.border}` }}
+              />
+            ) : (
+              <div style={{ width: 56, height: 56, borderRadius: 8, border: `1px dashed ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: T.muted, flexShrink: 0 }}>
+                ✂
+              </div>
+            )}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                onChange={handleLogoFile}
+                style={{ display: "none" }}
+              />
+              <div
+                onClick={() => !logoUploading && fileInputRef.current?.click()}
+                style={{ fontSize: 12, fontWeight: 600, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "6px 12px", cursor: logoUploading ? "default" : "pointer", opacity: logoUploading ? 0.6 : 1, display: "inline-block" }}
+              >
+                {logoUploading ? "Enviando…" : "Escolher arquivo"}
+              </div>
+              <div style={{ fontSize: 10, color: T.muted, marginTop: 4 }}>PNG, JPG ou SVG · até 2MB</div>
+            </div>
+          </div>
+          {logoError && <div style={{ fontSize: 11, color: "#F25C5C", marginTop: 6 }}>{logoError}</div>}
         </div>
         {[["Cor Primária (Acento)", cor1, setCor1], ["Cor de Fundo", cor2, setCor2]].map(([label, val, setter]) => (
           <div key={label} style={{ marginBottom: 16 }}>
