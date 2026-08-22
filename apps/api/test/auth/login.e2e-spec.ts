@@ -69,6 +69,22 @@ describe('POST /v1/auth/login', () => {
     expect(res.status).toBe(401);
   });
 
+  it('rejeita login em tenant suspenso com mensagem específica (403, não 401 genérico)', async () => {
+    await prisma.tenant.update({ where: { id: tenantUser.tenantId }, data: { status: 'suspended' } });
+    try {
+      const res = await request(app.getHttpServer()).post('/v1/auth/login').send({
+        tenantSlug: tenantUser.tenantSlug,
+        email: tenantUser.email,
+        password: tenantUser.password,
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toMatch(/suspenso/i);
+    } finally {
+      await prisma.tenant.update({ where: { id: tenantUser.tenantId }, data: { status: 'active' } });
+    }
+  });
+
   it('loga Super Admin sem tenantSlug, com tenantId null no retorno', async () => {
     const res = await request(app.getHttpServer()).post('/v1/auth/login').send({
       email: superAdmin.email,

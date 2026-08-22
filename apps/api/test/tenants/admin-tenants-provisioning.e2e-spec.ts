@@ -158,6 +158,7 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
       email: `admin-${slug}@test.local`,
       password: 'senha-forte-123',
     });
-    expect(loginRes.status).toBe(401);
+    expect(loginRes.status).toBe(403);
+    expect(loginRes.body.message).toMatch(/suspenso/i);
   });
 });

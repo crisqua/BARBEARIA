@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { hashPassword, verifyPassword } from '../common/password.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -68,7 +68,10 @@ export class AuthService {
 
     if (dto.tenantSlug) {
       const tenant = await this.prisma.tenant.findUnique({ where: { slug: dto.tenantSlug } });
-      if (!tenant || tenant.status !== 'active') throw invalidCredentials();
+      if (!tenant) throw invalidCredentials();
+      if (tenant.status !== 'active') {
+        throw new ForbiddenException('Esta barbearia está com o acesso suspenso. Entre em contato com o suporte.');
+      }
 
       const found = await this.tenantContext.runInTenantContext(tenant.id, (tx) =>
         tx.user.findUnique({
