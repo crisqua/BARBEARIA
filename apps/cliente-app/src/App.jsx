@@ -159,7 +159,7 @@ const inputStyle = (T) => ({
 
 // ─── AUTENTICAÇÃO ──────────────────────────────────────────
 
-function LoginScreen({ T, onLogin, goRegister }) {
+function LoginScreen({ T, tenant, onLogin, goRegister }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -181,7 +181,11 @@ function LoginScreen({ T, onLogin, goRegister }) {
     <Phone T={T}>
       <div style={{ padding: "40px 24px 32px" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>✂</div>
+          {tenant?.logoUrl ? (
+            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 56, height: 56, borderRadius: "50%", marginBottom: 8, objectFit: "cover" }} />
+          ) : (
+            <div style={{ fontSize: 36, marginBottom: 8 }}>✂</div>
+          )}
           <div style={{ fontSize: 20, fontWeight: 900, color: T.gold }}>Entrar</div>
         </div>
         {error && <ErrorBox T={T}>{error}</ErrorBox>}
@@ -204,7 +208,7 @@ function LoginScreen({ T, onLogin, goRegister }) {
   );
 }
 
-function RegisterScreen({ T, onRegister, goLogin }) {
+function RegisterScreen({ T, tenant, onRegister, goLogin }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -228,7 +232,11 @@ function RegisterScreen({ T, onRegister, goLogin }) {
     <Phone T={T}>
       <div style={{ padding: "40px 24px 32px" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>✂</div>
+          {tenant?.logoUrl ? (
+            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 56, height: 56, borderRadius: "50%", marginBottom: 8, objectFit: "cover" }} />
+          ) : (
+            <div style={{ fontSize: 36, marginBottom: 8 }}>✂</div>
+          )}
           <div style={{ fontSize: 20, fontWeight: 900, color: T.gold }}>Criar conta</div>
         </div>
         {error && <ErrorBox T={T}>{error}</ErrorBox>}
@@ -309,12 +317,19 @@ export default function App() {
       });
   }, []);
 
-  // Catálogo carregado uma vez, assim que há sessão — reutilizado em várias telas.
+  // Catálogo carregado assim que há sessão — reutilizado em várias telas.
   useEffect(() => {
     if (!user) return;
     listServices().then((r) => setServices(r.items)).catch(() => {});
     listProfessionals().then((r) => setAllProfessionals(r.items)).catch(() => {});
   }, [user]);
+
+  // Rebusca ao entrar na tela de escolha de serviço — evita oferecer um
+  // serviço que a barbearia desativou depois que a sessão já estava aberta.
+  useEffect(() => {
+    if (screen !== "servico") return;
+    listServices().then((r) => setServices(r.items)).catch(() => {});
+  }, [screen]);
 
   useEffect(() => {
     if (screen !== "profissional" || !selectedService) return;
@@ -439,8 +454,8 @@ export default function App() {
   );
 
   // ── LOGIN / CADASTRO ──
-  if (screen === "login") return <LoginScreen T={T} onLogin={handleLogin} goRegister={() => setScreen("register")} />;
-  if (screen === "register") return <RegisterScreen T={T} onRegister={handleRegister} goLogin={() => setScreen("login")} />;
+  if (screen === "login") return <LoginScreen T={T} tenant={tenant} onLogin={handleLogin} goRegister={() => setScreen("register")} />;
+  if (screen === "register") return <RegisterScreen T={T} tenant={tenant} onRegister={handleRegister} goLogin={() => setScreen("login")} />;
 
   // ── HOME ──
   if (screen === "home") return (
@@ -573,7 +588,7 @@ export default function App() {
                   </div>
                   {needsReschedule && (
                     <div style={{ fontSize: 11, color: accent, fontWeight: 700, marginBottom: 10 }}>
-                      Profissional não está mais disponível — cancele e agende com outro profissional.
+                      Esse horário não está mais disponível — cancele e agende novamente.
                     </div>
                   )}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 10, borderTop: `1px solid ${accent}33` }}>
