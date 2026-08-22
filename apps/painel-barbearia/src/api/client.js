@@ -128,3 +128,13 @@ export const listAppointments = (params = {}) => {
   const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
   return apiFetch(`/v1/appointments?${query}`);
 };
+
+export const cancelAppointment = (id) => apiFetch(`/v1/appointments/${id}/cancel`, { method: "PATCH" });
+
+export const completeAppointment = (id) => apiFetch(`/v1/appointments/${id}/complete`, { method: "PATCH" });
+
+export const rescheduleAppointment = (id, startsAt) =>
+  apiFetch(`/v1/appointments/${id}/reschedule`, { method: "PATCH", body: { startsAt } });
+
+export const getAvailability = (professionalId, serviceId, date) =>
+  apiFetch(`/v1/professionals/${professionalId}/availability?serviceId=${serviceId}&date=${date}`);

@@ -97,6 +97,15 @@ export class AppointmentsService {
     return tx.appointment.update({ where: { id }, data: { status: 'cancelled' } });
   }
 
+  /** Só admin chama essa rota (RBAC no controller) — sem checagem de horário de propósito, decisão de MVP registrada no CLAUDE.md. */
+  async complete(tx: TenantTx, id: string, requester: AuthenticatedUser) {
+    const appointment = await this.loadOwned(tx, id, requester);
+    if (appointment.status !== 'scheduled') {
+      throw new BadRequestException('Só é possível concluir agendamentos com status "scheduled".');
+    }
+    return tx.appointment.update({ where: { id }, data: { status: 'completed' } });
+  }
+
   async reschedule(tx: TenantTx, id: string, requester: AuthenticatedUser, dto: RescheduleAppointmentDto) {
     const appointment = await this.loadOwned(tx, id, requester);
     if (appointment.status !== 'scheduled') {

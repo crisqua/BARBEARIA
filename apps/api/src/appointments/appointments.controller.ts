@@ -51,6 +51,12 @@ export class AppointmentsController {
     return this.appointmentsService.cancel(tx, id, user);
   }
 
+  @Patch(':id/complete')
+  @Roles('admin')
+  complete(@CurrentUser() user: AuthenticatedUser, @CurrentTenant() tx: TenantTx, @Param('id') id: string) {
+    return this.appointmentsService.complete(tx, id, user);
+  }
+
   @Patch(':id/reschedule')
   @Roles('admin', 'cliente')
   reschedule(

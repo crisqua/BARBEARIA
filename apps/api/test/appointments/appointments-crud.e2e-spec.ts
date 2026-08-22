@@ -220,4 +220,55 @@ describe('CRUD de appointments (/v1/appointments)', () => {
 
     await cleanupTenantWithUser(prisma, tenantContext, otherFx.admin.tenantId);
   });
+
+  it('admin conclui um agendamento scheduled', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: addMinutesIso(fx.testSlotIso, 1500) });
+    expect(created.status).toBe(201);
+
+    const res = await request(app.getHttpServer())
+      .patch(`/v1/appointments/${created.body.id}/complete`)
+      .set('Authorization', `Bearer ${fx.adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('completed');
+  });
+
+  it('cliente e barbeiro não podem concluir agendamento (só admin)', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: addMinutesIso(fx.testSlotIso, 1560) });
+    expect(created.status).toBe(201);
+
+    const asCliente = await request(app.getHttpServer())
+      .patch(`/v1/appointments/${created.body.id}/complete`)
+      .set('Authorization', `Bearer ${fx.clienteToken}`);
+    expect(asCliente.status).toBe(403);
+
+    const asBarbeiro = await request(app.getHttpServer())
+      .patch(`/v1/appointments/${created.body.id}/complete`)
+      .set('Authorization', `Bearer ${fx.professionalToken}`);
+    expect(asBarbeiro.status).toBe(403);
+  });
+
+  it('concluir de novo dá 400 (já não está scheduled)', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: addMinutesIso(fx.testSlotIso, 1620) });
+    expect(created.status).toBe(201);
+
+    const first = await request(app.getHttpServer())
+      .patch(`/v1/appointments/${created.body.id}/complete`)
+      .set('Authorization', `Bearer ${fx.adminToken}`);
+    expect(first.status).toBe(200);
+
+    const second = await request(app.getHttpServer())
+      .patch(`/v1/appointments/${created.body.id}/complete`)
+      .set('Authorization', `Bearer ${fx.adminToken}`);
+    expect(second.status).toBe(400);
+  });
 });

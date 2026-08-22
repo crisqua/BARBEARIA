@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
   assignService,
+  cancelAppointment,
+  completeAppointment,
   createProfessional,
   createService,
   createWorkingHour,
   deleteWorkingHour,
   getAccessToken,
+  getAvailability,
   getMe,
   getMyTenant,
   getUser,
@@ -16,6 +19,7 @@ import {
   listWorkingHours,
   login as apiLogin,
   logout as apiLogout,
+  rescheduleAppointment,
   setAccessToken,
   unassignService,
   updateMyTenant,
@@ -252,6 +256,102 @@ const Sidebar = ({ active, setActive, user, onLogout }) => {
   );
 };
 
+// ─── AÇÕES DE AGENDAMENTO (cancelar/concluir/remarcar) ─────
+// Compartilhado entre Dashboard e Agenda — mesmas regras do backend:
+// cancelar vale pra scheduled e needs_reschedule; concluir e remarcar só
+// pra scheduled (needs_reschedule exige cancelar e criar um novo).
+const actionBtnStyle = (color) => ({
+  fontSize: 11, fontWeight: 600, color, border: `1px solid ${color}55`,
+  borderRadius: 6, padding: "4px 9px", cursor: "pointer", background: "transparent",
+});
+
+function AppointmentActions({ appointment, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [reschedOpen, setReschedOpen] = useState(false);
+  const [reschedDate, setReschedDate] = useState(() => dateKey(new Date(appointment.startsAt)));
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState("");
+
+  useEffect(() => {
+    if (!reschedOpen) return;
+    setSlotsLoading(true);
+    setSlotsError("");
+    getAvailability(appointment.professionalId, appointment.serviceId, reschedDate)
+      .then((res) => setSlots(res.slots))
+      .catch((e) => setSlotsError(e.message || "Não foi possível carregar os horários."))
+      .finally(() => setSlotsLoading(false));
+  }, [reschedOpen, reschedDate]);
+
+  const runAction = async (fn) => {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+      onChanged();
+    } catch (e) {
+      setError(e.message || "Não foi possível concluir a ação.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCancel = () => {
+    if (!window.confirm("Cancelar este agendamento?")) return;
+    runAction(() => cancelAppointment(appointment.id));
+  };
+
+  const handleComplete = () => runAction(() => completeAppointment(appointment.id));
+
+  const pickSlot = (slotIso) =>
+    runAction(async () => {
+      await rescheduleAppointment(appointment.id, slotIso);
+      setReschedOpen(false);
+    });
+
+  if (appointment.status !== "scheduled" && appointment.status !== "needs_reschedule") return null;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button disabled={busy} onClick={handleCancel} style={actionBtnStyle("#F25C5C")}>Cancelar</button>
+        {appointment.status === "scheduled" && (
+          <>
+            <button disabled={busy} onClick={handleComplete} style={actionBtnStyle(T.success)}>Concluir</button>
+            <button disabled={busy} onClick={() => setReschedOpen((v) => !v)} style={actionBtnStyle(T.gold)}>
+              {reschedOpen ? "Fechar" : "Remarcar"}
+            </button>
+          </>
+        )}
+      </div>
+      {error && <div style={{ fontSize: 11, color: "#F25C5C", marginTop: 6 }}>{error}</div>}
+      {reschedOpen && (
+        <div style={{ marginTop: 10, padding: 10, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8 }}>
+          <input
+            type="date"
+            value={reschedDate}
+            onChange={(e) => setReschedDate(e.target.value)}
+            style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 8px", fontSize: 12, color: T.text, marginBottom: 8 }}
+          />
+          {slotsLoading && <div style={{ fontSize: 11, color: T.muted }}>Carregando horários…</div>}
+          {slotsError && <div style={{ fontSize: 11, color: "#F25C5C" }}>{slotsError}</div>}
+          {!slotsLoading && !slotsError && slots.length === 0 && (
+            <div style={{ fontSize: 11, color: T.muted }}>Nenhum horário livre nesse dia.</div>
+          )}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {slots.map((s) => (
+              <button key={s} disabled={busy} onClick={() => pickSlot(s)} style={{ ...actionBtnStyle(T.gold), background: T.gold + "14" }}>
+                {formatSlotTime(s)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DASHBOARD ────────────────────────────────────────────
 function Dashboard() {
   const [appointments, setAppointments] = useState([]);
@@ -260,11 +360,11 @@ function Dashboard() {
   const [clients, setClients] = useState({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const reload = () => {
     const from = new Date();
     from.setUTCHours(0, 0, 0, 0);
     const to = new Date(from.getTime() + 24 * 60 * 60_000);
-    Promise.all([
+    return Promise.all([
       listAppointments({ from: from.toISOString(), to: to.toISOString() }),
       listProfessionals(),
       listServices(),
@@ -282,7 +382,9 @@ function Dashboard() {
         });
       })
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { reload(); }, []);
 
   const [filterCliente, setFilterCliente] = useState("");
   const [filterServico, setFilterServico] = useState("");
@@ -345,14 +447,17 @@ function Dashboard() {
           </div>
         )}
         {sorted.map((a, i) => (
-          <div key={a.id} style={{ padding: "14px 20px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
-            <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
-            <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
-            <div style={{ flex: 1, fontSize: 13, color: T.text }}>{proName(a.professionalId)}</div>
-            <div style={{ width: 90, textAlign: "right" }}>
-              <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
+          <div key={a.id} style={{ padding: "14px 20px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
+              <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
+              <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
+              <div style={{ flex: 1, fontSize: 13, color: T.text }}>{proName(a.professionalId)}</div>
+              <div style={{ width: 90, textAlign: "right" }}>
+                <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
+              </div>
             </div>
+            <AppointmentActions appointment={a} onChanged={reload} />
           </div>
         ))}
       </div>
@@ -376,11 +481,11 @@ function Agenda() {
     });
   }, []);
 
-  useEffect(() => {
+  const reload = () => {
     setLoading(true);
     const from = new Date(`${dateKey(selectedDate)}T00:00:00.000Z`);
     const to = new Date(from.getTime() + 24 * 60 * 60_000);
-    listAppointments({ from: from.toISOString(), to: to.toISOString() })
+    return listAppointments({ from: from.toISOString(), to: to.toISOString() })
       .then((r) => {
         setAppointments(r.items);
         const clientIds = [...new Set(r.items.map((a) => a.clientId))];
@@ -391,7 +496,9 @@ function Agenda() {
         });
       })
       .finally(() => setLoading(false));
-  }, [selectedDate]);
+  };
+
+  useEffect(() => { reload(); }, [selectedDate]);
 
   const svcName = (id) => services.find((s) => s.id === id)?.name || "—";
   const clientName = (id) => clients[id] || "—";
@@ -483,6 +590,7 @@ function Agenda() {
                     </div>
                     <div style={{ fontSize: 13, color: T.text, fontWeight: 700, marginTop: 4 }}>{clientName(a.clientId)}</div>
                     <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{svcName(a.serviceId)}</div>
+                    <AppointmentActions appointment={a} onChanged={reload} />
                   </div>
                 ))}
               </div>
