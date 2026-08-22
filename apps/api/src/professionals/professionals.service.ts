@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { nowInBarbershopTime } from '../common/time.util';
 import { hashPassword } from '../common/password.util';
+import { revertNeedsReschedule } from '../common/revert-needs-reschedule.util';
 import { TenantTx } from '../prisma/tenant-context.service';
 import { CreateProfessionalDto } from './dto/create-professional.dto';
 import { UpdateProfessionalDto } from './dto/update-professional.dto';
@@ -84,6 +85,7 @@ export class ProfessionalsService {
     const professional = serializeProfessional(updated);
 
     let affectedAppointmentsCount = 0;
+    let revertedAppointmentsCount = 0;
     if (before.active && dto.active === false) {
       const result = await tx.appointment.updateMany({
         where: {
@@ -94,9 +96,11 @@ export class ProfessionalsService {
         data: { status: 'needs_reschedule' },
       });
       affectedAppointmentsCount = result.count;
+    } else if (!before.active && dto.active === true) {
+      revertedAppointmentsCount = await revertNeedsReschedule(tx, { professionalId: id });
     }
 
-    return { ...professional, affectedAppointmentsCount };
+    return { ...professional, affectedAppointmentsCount, revertedAppointmentsCount };
   }
 
   /** Usado por professional-services e working-hours antes de criar a associação —

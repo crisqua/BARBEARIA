@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,6 +14,9 @@ import { TenantTx } from '../prisma/tenant-context.service';
 export class ServicesProfessionalsController {
   @Get()
   async list(@CurrentTenant() tx: TenantTx, @Param('serviceId') serviceId: string) {
+    const service = await tx.service.findFirst({ where: { id: serviceId, active: true } });
+    if (!service) throw new NotFoundException('Serviço não encontrado ou inativo.');
+
     const links = await tx.professionalService.findMany({
       where: { serviceId },
       select: { professionalId: true },
