@@ -407,7 +407,7 @@ const Dashboard = ({ setActive }) => {
             <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
           ) : (
             <Table
-              cols={["Barbearia", "Slug", "Criada em", "Status"]}
+              cols={["Barbearia", "Identificador", "Criada em", "Status"]}
               rows={tenants.map((t, i) => {
                 const badge = statusBadge(t.status);
                 return (
@@ -522,7 +522,7 @@ const Barbearias = () => {
           <div style={{ flex: 1, minWidth: 260, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: T.text, marginBottom: 14 }}>Dados da barbearia</div>
             {[
-              ["Slug", `${detalhe.slug}.barberaria.app`],
+              ["Identificador", `${detalhe.slug}.barberaria.app`],
               ["Plano", "— (Sprint 4)"],
               ["Status", badge.label],
               ["Criada em", formatDate(detalhe.createdAt)],
@@ -570,7 +570,7 @@ const Barbearias = () => {
         <div style={{ fontSize: 12, color: T.muted }}>Nenhuma barbearia cadastrada ainda.</div>
       ) : (
         <Table
-          cols={["Barbearia", "Slug", "Criada em", "Status", ""]}
+          cols={["Barbearia", "Identificador", "Criada em", "Status", ""]}
           rows={filtrados.map((t, i) => {
             const badge = statusBadge(t.status);
             return (
