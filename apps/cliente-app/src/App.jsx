@@ -109,22 +109,51 @@ const Avatar = ({ name, size = 32, T }) => {
   );
 };
 
-const Phone = ({ children, T }) => (
-  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 24, minHeight: "100vh", background: "#080A10" }}>
-    <div style={{
-      width: 375, background: T.bg, borderRadius: 40,
-      border: `2px solid ${T.border}`, overflow: "hidden",
-      boxShadow: "0 0 60px #00000080", height: "fit-content", maxHeight: "94vh", overflowY: "auto",
-    }}>
-      <div style={{ background: T.bg, padding: "14px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
-        <span style={{ fontSize: 12, color: T.muted }}>9:41</span>
-        <div style={{ width: 100, height: 24, background: T.card, borderRadius: 12 }} />
-        <span style={{ fontSize: 12, color: T.muted }}>●●●</span>
+// Abaixo do breakpoint, é um celular de verdade — a barra de status já é do
+// aparelho, não precisa de uma falsa por cima (era o que quebrava em tela real).
+function useIsMobile(breakpoint = 640) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [query]);
+
+  return isMobile;
+}
+
+const Phone = ({ children, T }) => {
+  const isMobile = useIsMobile();
+
+  // Celular real: ocupa a tela inteira, sem moldura decorativa nem scroll
+  // preso numa caixa interna — é o app, não uma foto de protótipo dele.
+  if (isMobile) {
+    return <div style={{ minHeight: "100vh", background: T.bg }}>{children}</div>;
+  }
+
+  // Desktop: mantém a moldura de celular (útil pra demo/apresentação).
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 24, minHeight: "100vh", background: "#080A10" }}>
+      <div style={{
+        width: 375, background: T.bg, borderRadius: 40,
+        border: `2px solid ${T.border}`, overflow: "hidden",
+        boxShadow: "0 0 60px #00000080", height: "fit-content", maxHeight: "94vh", overflowY: "auto",
+      }}>
+        <div style={{ background: T.bg, padding: "14px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
+          <span style={{ fontSize: 12, color: T.muted }}>9:41</span>
+          <div style={{ width: 100, height: 24, background: T.card, borderRadius: 12 }} />
+          <span style={{ fontSize: 12, color: T.muted }}>●●●</span>
+        </div>
+        {children}
       </div>
-      {children}
     </div>
-  </div>
-);
+  );
+};
 
 const ErrorBox = ({ children, T }) => (
   <div style={{ background: "#F25C5C22", border: "1px solid #F25C5C55", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#F25C5C", marginBottom: 14 }}>
