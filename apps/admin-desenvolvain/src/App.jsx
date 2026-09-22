@@ -171,8 +171,8 @@ const Select = ({ label, value, onChange, options, error }) => (
 );
 
 const Table = ({ cols, rows }) => (
-  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflowX: "auto" }}>
+    <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
       <thead>
         <tr style={{ borderBottom: `1px solid ${T.border}` }}>
           {cols.map(c => (
@@ -272,61 +272,105 @@ const NAV = [
   { section: null, items: [{ id: "config", icon: "⚙", label: "Configurações" }] },
 ];
 
-const Sidebar = ({ active, setActive, user, onLogout }) => (
-  <div style={{
-    width: 236, background: T.surface, borderRight: `1px solid ${T.border}`,
-    display: "flex", flexDirection: "column", flexShrink: 0,
-    height: "100vh", overflowY: "auto"
-  }}>
-    {/* Marca */}
-    <div style={{ padding: "28px 22px 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: T.lime + "18", border: `1.5px solid ${T.lime}50`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✂</div>
-        <div>
-          <div style={{ fontSize: 13, color: T.lime, fontWeight: 900, letterSpacing: "0.06em" }}>DESENVOLVA IN</div>
-          <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Painel Master · Incubadora</div>
-        </div>
-      </div>
-    </div>
+// Abaixo do breakpoint, a sidebar fixa não cabe — vira menu retrátil
+// (hambúrguer), aberto por cima do conteúdo em vez de dividir a largura
+// da tela com ele. Mesma técnica usada no painel-barbearia e cliente-app.
+function useIsMobile(breakpoint = 768) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches,
+  );
 
-    <div style={{ flex: 1 }}>
-      {NAV.map((sec, si) => (
-        <div key={si}>
-          {sec.section && (
-            <div style={{ padding: "14px 22px 6px", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>{sec.section}</div>
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [query]);
+
+  return isMobile;
+}
+
+const Sidebar = ({ active, setActive, user, onLogout, isMobile, open, onClose }) => {
+  // No celular, escolher uma página fecha o menu — igual qualquer drawer mobile.
+  const selectPage = (id) => {
+    setActive(id);
+    if (isMobile) onClose?.();
+  };
+
+  if (isMobile && !open) return null;
+
+  return (
+    <>
+      {isMobile && (
+        <div
+          onClick={onClose}
+          style={{ position: "fixed", inset: 0, background: "#000000AA", zIndex: 40 }}
+        />
+      )}
+      <div style={{
+        width: isMobile ? "min(260px, 82vw)" : 236,
+        background: T.surface, borderRight: `1px solid ${T.border}`,
+        display: "flex", flexDirection: "column", flexShrink: 0,
+        height: "100vh", overflowY: "auto",
+        ...(isMobile
+          ? { position: "fixed", top: 0, left: 0, zIndex: 50, boxShadow: "4px 0 24px #00000080" }
+          : {}),
+      }}>
+        {/* Marca */}
+        <div style={{ padding: "28px 22px 24px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: T.lime + "18", border: `1.5px solid ${T.lime}50`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✂</div>
+            <div>
+              <div style={{ fontSize: 13, color: T.lime, fontWeight: 900, letterSpacing: "0.06em" }}>DESENVOLVA IN</div>
+              <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Painel Master · Incubadora</div>
+            </div>
+          </div>
+          {isMobile && (
+            <span onClick={onClose} style={{ fontSize: 16, color: T.muted, cursor: "pointer", padding: 4 }}>✕</span>
           )}
-          {sec.items.map(item => {
-            const on = active === item.id;
-            return (
-              <div key={item.id} onClick={() => setActive(item.id)} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "9px 22px",
-                cursor: "pointer",
-                borderLeft: on ? `2px solid ${T.lime}` : "2px solid transparent",
-                background: on ? T.limeSoft : "transparent",
-                color: on ? T.lime : T.muted, fontSize: 13, fontWeight: on ? 600 : 400,
-                transition: "all 0.12s"
-              }}>
-                <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>
-                {item.label}
-              </div>
-            );
-          })}
         </div>
-      ))}
-    </div>
 
-    <div style={{ padding: "20px 22px", borderTop: `1px solid ${T.border}` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <Avatar name={user?.email || "Super Admin"} size={30} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, color: T.text, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.email}</div>
-          <div style={{ fontSize: 10, color: T.muted }}>Super Admin</div>
+        <div style={{ flex: 1 }}>
+          {NAV.map((sec, si) => (
+            <div key={si}>
+              {sec.section && (
+                <div style={{ padding: "14px 22px 6px", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>{sec.section}</div>
+              )}
+              {sec.items.map(item => {
+                const on = active === item.id;
+                return (
+                  <div key={item.id} onClick={() => selectPage(item.id)} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "9px 22px",
+                    cursor: "pointer",
+                    borderLeft: on ? `2px solid ${T.lime}` : "2px solid transparent",
+                    background: on ? T.limeSoft : "transparent",
+                    color: on ? T.lime : T.muted, fontSize: 13, fontWeight: on ? 600 : 400,
+                    transition: "all 0.12s"
+                  }}>
+                    <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>
+                    {item.label}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "20px 22px", borderTop: `1px solid ${T.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <Avatar name={user?.email || "Super Admin"} size={30} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: T.text, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.email}</div>
+              <div style={{ fontSize: 10, color: T.muted }}>Super Admin</div>
+            </div>
+          </div>
+          <div onClick={onLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
         </div>
       </div>
-      <div onClick={onLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
-    </div>
-  </div>
-);
+    </>
+  );
+};
 
 // ────────────────────────────────────────────────────────
 // TELA: DASHBOARD
@@ -1729,6 +1773,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
   const [, setThemeTick] = useState(0); // força re-render depois de applyTheme mutar T
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -1805,18 +1851,34 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: T.bg, minHeight: "100vh", display: "flex", height: "100vh", overflow: "hidden" }}>
-      <Sidebar active={page} setActive={setPage} user={user} onLogout={handleLogout} />
+      <Sidebar
+        active={page} setActive={setPage} user={user} onLogout={handleLogout}
+        isMobile={isMobile} open={sidebarOpen} onClose={() => setSidebarOpen(false)}
+      />
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {/* Top bar */}
-        <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <div style={{ fontSize: 12, color: T.muted }}>
-            Desenvolva IN <span style={{ color: T.border, margin: "0 6px" }}>›</span>
-            <span style={{ color: T.mutedHi, textTransform: "capitalize" }}>{page}</span>
+        <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: isMobile ? "12px 16px" : "12px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            {isMobile && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                style={{
+                  background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8,
+                  width: 34, height: 34, color: T.text, fontSize: 15, cursor: "pointer", flexShrink: 0,
+                }}
+              >☰</button>
+            )}
+            <div style={{ fontSize: 12, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {!isMobile && <>Desenvolva IN <span style={{ color: T.border, margin: "0 6px" }}>›</span></>}
+              <span style={{ color: T.mutedHi, textTransform: "capitalize" }}>{page}</span>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <Badge color={T.success} small>Sistema operacional</Badge>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.success }} />
-          </div>
+          {!isMobile && (
+            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+              <Badge color={T.success} small>Sistema operacional</Badge>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.success }} />
+            </div>
+          )}
         </div>
         <div style={{ flex: 1, overflowY: "auto", display: "flex" }}>
           {render()}
