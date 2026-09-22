@@ -170,20 +170,41 @@ const Select = ({ label, value, onChange, options, error }) => (
   </div>
 );
 
-const Table = ({ cols, rows }) => (
-  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflowX: "auto" }}>
-    <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
-      <thead>
-        <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-          {cols.map(c => (
-            <th key={c} style={{ padding: "11px 20px", textAlign: "left", fontSize: 10, color: T.muted, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{c}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>
+// Card usado como alternativa à linha de tabela no celular — mesmo cartão
+// visual em qualquer tela que precise de uma versão empilhada.
+const MobileCard = ({ children }) => (
+  <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+    {children}
   </div>
 );
+
+// Abaixo do breakpoint, troca a tabela por `mobileRows` (lista de MobileCard)
+// quando informado — evita depender só de scroll horizontal pra alcançar
+// coluna cortada. Telas que ainda não passaram por esse tratamento caem no
+// scroll horizontal de sempre (overflowX), que já é estritamente melhor que
+// cortar a coluna.
+const Table = ({ cols, rows, mobileRows }) => {
+  const isMobile = useIsMobile();
+
+  if (isMobile && mobileRows) {
+    return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{mobileRows}</div>;
+  }
+
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflowX: "auto" }}>
+      <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+            {cols.map(c => (
+              <th key={c} style={{ padding: "11px 20px", textAlign: "left", fontSize: 10, color: T.muted, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>
+  );
+};
 
 const TRow = ({ cells, last }) => (
   <tr style={{ borderBottom: last ? "none" : `1px solid ${T.border}22`, cursor: "pointer" }}>
@@ -466,6 +487,24 @@ const Dashboard = ({ setActive }) => {
                   ]} />
                 );
               })}
+              mobileRows={tenants.map((t) => {
+                const badge = statusBadge(t.status);
+                return (
+                  <MobileCard key={t.id}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <Avatar name={t.name} size={28} />
+                        <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.name}</span>
+                      </div>
+                      <Badge color={badge.color}>{badge.label}</Badge>
+                    </div>
+                    <div style={{ display: "flex", gap: 16, fontSize: 12, color: T.muted }}>
+                      <span>{t.slug}</span>
+                      <span>{formatDate(t.createdAt)}</span>
+                    </div>
+                  </MobileCard>
+                );
+              })}
             />
           )}
         </div>
@@ -631,6 +670,25 @@ const Barbearias = () => {
                 <Badge color={badge.color}>{badge.label}</Badge>,
                 <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>,
               ]} />
+            );
+          })}
+          mobileRows={filtrados.map((t) => {
+            const badge = statusBadge(t.status);
+            return (
+              <MobileCard key={t.id}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Avatar name={t.name} size={30} />
+                    <div>
+                      <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.name}</div>
+                      <div style={{ fontSize: 10, color: T.muted }}>{t.slug}.barberaria.app</div>
+                    </div>
+                  </div>
+                  <Badge color={badge.color}>{badge.label}</Badge>
+                </div>
+                <div style={{ fontSize: 12, color: T.muted }}>Criada em {formatDate(t.createdAt)}</div>
+                <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>
+              </MobileCard>
             );
           })}
         />
@@ -1283,6 +1341,21 @@ const Financeiro = () => {
               ) : null,
             ]} />
           ))}
+          mobileRows={payments.map((p) => (
+            <MobileCard key={p.id}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{p.tenantName}</span>
+                <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+                <span style={{ color: T.text, fontWeight: 600 }}>{formatMoney(p.amountCents)}</span>
+                <span style={{ color: T.muted }}>{p.period}</span>
+              </div>
+              {p.status === "pending" && (
+                <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
+              )}
+            </MobileCard>
+          ))}
         />
       )}
     </div>
@@ -1344,6 +1417,22 @@ const Usuarios = () => {
               <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>,
             ]} />
           ))}
+          mobileRows={usuarios.map((u) => (
+            <MobileCard key={u.id}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar name={u.name} size={32} color={roleColor[u.role]} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Badge color={roleColor[u.role]}>{u.role}</Badge>
+                <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>
+              </div>
+              {u.tenantName && <div style={{ fontSize: 12, color: T.muted }}>{u.tenantName}</div>}
+            </MobileCard>
+          ))}
         />
       )}
     </div>
@@ -1384,6 +1473,20 @@ const Suporte = () => {
             <Badge color={t.status === "aberto" ? T.danger : t.status === "respondido" ? T.warning : T.success}>{t.status}</Badge>,
             <span style={{ fontSize: 12, color: T.muted }}>{t.data}</span>,
           ]} />
+        ))}
+        mobileRows={tickets.map((t, i) => (
+          <MobileCard key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: T.muted, fontFamily: "monospace" }}>{t.id}</span>
+              <Badge color={t.status === "aberto" ? T.danger : t.status === "respondido" ? T.warning : T.success}>{t.status}</Badge>
+            </div>
+            <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.barbearia}</div>
+            <div style={{ fontSize: 13, color: T.text }}>{t.assunto}</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Badge color={prioColor[t.prioridade]}>{t.prioridade}</Badge>
+              <span style={{ fontSize: 12, color: T.muted }}>{t.data}</span>
+            </div>
+          </MobileCard>
         ))}
       />
     </div>
@@ -1513,6 +1616,35 @@ const Assinaturas = () => {
                   </span>
                 ) : null,
               ]} />
+            );
+          })}
+          mobileRows={items.map((i) => {
+            const acting = actingId === i.tenant.id;
+            return (
+              <MobileCard key={i.tenant.id}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Avatar name={i.tenant.name} size={28} />
+                  <span style={{ fontSize: 13, color: T.text, fontWeight: 600, flex: 1 }}>{i.tenant.name}</span>
+                  {i.subscription ? <Badge color={i.subscription.status === "active" ? T.success : T.danger}>{i.subscription.status === "active" ? "ativo" : "cancelado"}</Badge> : <Badge color={T.warning}>sem assinatura</Badge>}
+                </div>
+                <select
+                  value={i.subscription?.planId || ""}
+                  disabled={acting}
+                  onChange={(e) => trocarPlano(i.tenant.id, e.target.value)}
+                  style={{ width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "7px 8px", color: T.text, fontSize: 12, outline: "none" }}
+                >
+                  {!i.subscription && <option value="">— sem plano —</option>}
+                  {planos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: T.muted }}>{i.subscription ? `desde ${formatDate(i.subscription.startedAt)}` : "—"}</span>
+                  {i.subscription && (
+                    <span onClick={acting ? undefined : () => toggleStatus(i.tenant.id, i.subscription.status)} style={{ fontSize: 12, color: i.subscription.status === "active" ? T.danger : T.lime, cursor: acting ? "default" : "pointer" }}>
+                      {i.subscription.status === "active" ? "Cancelar" : "Reativar"}
+                    </span>
+                  )}
+                </div>
+              </MobileCard>
             );
           })}
         />
@@ -1758,6 +1890,26 @@ const Repasses = () => {
                 <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
               ) : null,
             ]} />
+          ))}
+          mobileRows={payouts.map((p) => (
+            <MobileCard key={p.id}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Avatar name={p.tenantName} size={28} />
+                  <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{p.tenantName}</span>
+                </div>
+                <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>
+              </div>
+              <div style={{ fontSize: 12, color: T.muted }}>{p.period}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+                <span style={{ color: T.text }}>Bruto: {formatMoney(p.grossRevenueCents)}</span>
+                <Badge color={T.mutedHi}>{p.feePct}%</Badge>
+              </div>
+              <div style={{ fontSize: 13, color: T.lime, fontWeight: 700 }}>Líquido: {formatMoney(p.netCents)}</div>
+              {p.status === "pending" && (
+                <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
+              )}
+            </MobileCard>
           ))}
         />
       )}
