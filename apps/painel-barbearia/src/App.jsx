@@ -193,8 +193,28 @@ function LoginScreen({ onLogin }) {
   );
 }
 
+// ─── RESPONSIVO ───────────────────────────────────────────
+// Abaixo do breakpoint, a sidebar fixa de 240px não cabe — vira menu
+// retrátil (hambúrguer), aberto por cima do conteúdo em vez de dividir
+// a largura da tela com ele.
+function useIsMobile(breakpoint = 768) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [query]);
+
+  return isMobile;
+}
+
 // ─── SIDEBAR ──────────────────────────────────────────────
-const Sidebar = ({ active, setActive, user, onLogout }) => {
+const Sidebar = ({ active, setActive, user, onLogout, isMobile, open, onClose }) => {
   const sections = [
     { label: null, items: [{ id: "dashboard", icon: "⊞", label: "Dashboard" }] },
     {
@@ -207,52 +227,78 @@ const Sidebar = ({ active, setActive, user, onLogout }) => {
     },
     { label: null, items: [{ id: "config", icon: "⚙", label: "Configurações" }] },
   ];
+
+  // No celular, escolher uma página fecha o menu — igual qualquer drawer mobile.
+  const selectPage = (id) => {
+    setActive(id);
+    if (isMobile) onClose?.();
+  };
+
+  if (isMobile && !open) return null;
+
   return (
-    <div style={{
-      width: 240, background: T.surface, borderRight: `1px solid ${T.border}`,
-      display: "flex", flexDirection: "column", padding: "24px 0", flexShrink: 0,
-      height: "100vh", overflowY: "auto"
-    }}>
-      <div style={{ padding: "0 20px 24px" }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: 8, background: T.gold + "22",
-          border: `1.5px solid ${T.gold}55`, display: "flex", alignItems: "center",
-          justifyContent: "center", marginBottom: 10, fontSize: 18
-        }}>✂</div>
-        <div style={{ fontSize: 13, color: T.gold, fontWeight: 800, letterSpacing: "0.08em" }}>BARBERARIA</div>
-        <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Barber Shop · Painel</div>
-      </div>
-      <div style={{ flex: 1 }}>
-        {sections.map((sec, si) => (
-          <div key={si} style={{ marginBottom: 4 }}>
-            {sec.label && (
-              <div style={{ padding: "14px 20px 6px", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>{sec.label}</div>
-            )}
-            {sec.items.map(i => (
-              <div key={i.id} onClick={() => setActive(i.id)} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "9px 20px",
-                cursor: "pointer", borderLeft: active === i.id ? `2px solid ${T.gold}` : "2px solid transparent",
-                background: active === i.id ? T.gold + "10" : "transparent",
-                color: active === i.id ? T.gold : T.muted,
-                fontSize: 13, fontWeight: active === i.id ? 600 : 400,
-              }}>
-                <span style={{ fontSize: 14, width: 16, textAlign: "center" }}>{i.icon}</span> {i.label}
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div style={{ padding: "16px 20px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <Avatar name={user?.name || "Admin"} size={28} />
+    <>
+      {isMobile && (
+        <div
+          onClick={onClose}
+          style={{ position: "fixed", inset: 0, background: "#000000AA", zIndex: 40 }}
+        />
+      )}
+      <div style={{
+        width: isMobile ? "min(260px, 82vw)" : 240,
+        background: T.surface, borderRight: `1px solid ${T.border}`,
+        display: "flex", flexDirection: "column", padding: "24px 0", flexShrink: 0,
+        height: "100vh", overflowY: "auto",
+        ...(isMobile
+          ? { position: "fixed", top: 0, left: 0, zIndex: 50, boxShadow: "4px 0 24px #00000080" }
+          : {}),
+      }}>
+        <div style={{ padding: "0 20px 24px", display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{user?.name}</div>
-            <div style={{ fontSize: 10, color: T.muted }}>Administrador</div>
+            <div style={{
+              width: 36, height: 36, borderRadius: 8, background: T.gold + "22",
+              border: `1.5px solid ${T.gold}55`, display: "flex", alignItems: "center",
+              justifyContent: "center", marginBottom: 10, fontSize: 18
+            }}>✂</div>
+            <div style={{ fontSize: 13, color: T.gold, fontWeight: 800, letterSpacing: "0.08em" }}>BARBERARIA</div>
+            <div style={{ fontSize: 10, color: T.muted, marginTop: 1 }}>Barber Shop · Painel</div>
           </div>
+          {isMobile && (
+            <span onClick={onClose} style={{ fontSize: 16, color: T.muted, cursor: "pointer", padding: 4 }}>✕</span>
+          )}
         </div>
-        <div onClick={onLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
+        <div style={{ flex: 1 }}>
+          {sections.map((sec, si) => (
+            <div key={si} style={{ marginBottom: 4 }}>
+              {sec.label && (
+                <div style={{ padding: "14px 20px 6px", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>{sec.label}</div>
+              )}
+              {sec.items.map(i => (
+                <div key={i.id} onClick={() => selectPage(i.id)} style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "9px 20px",
+                  cursor: "pointer", borderLeft: active === i.id ? `2px solid ${T.gold}` : "2px solid transparent",
+                  background: active === i.id ? T.gold + "10" : "transparent",
+                  color: active === i.id ? T.gold : T.muted,
+                  fontSize: 13, fontWeight: active === i.id ? 600 : 400,
+                }}>
+                  <span style={{ fontSize: 14, width: 16, textAlign: "center" }}>{i.icon}</span> {i.label}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "16px 20px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <Avatar name={user?.name || "Admin"} size={28} />
+            <div>
+              <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{user?.name}</div>
+              <div style={{ fontSize: 10, color: T.muted }}>Administrador</div>
+            </div>
+          </div>
+          <div onClick={onLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
@@ -354,6 +400,7 @@ function AppointmentActions({ appointment, onChanged }) {
 
 // ─── DASHBOARD ────────────────────────────────────────────
 function Dashboard() {
+  const isMobile = useIsMobile();
   const [appointments, setAppointments] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   const [services, setServices] = useState([]);
@@ -418,27 +465,34 @@ function Dashboard() {
         </div>
         {loading && <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>}
         {!loading && appointments.length > 0 && (
-          <div style={{ padding: "10px 20px", display: "flex", alignItems: "center", gap: 14, borderBottom: `1px solid ${T.border}` }}>
-            <div style={{ width: 50, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Hora</div>
+          <div style={{
+            padding: isMobile ? "10px 20px 14px" : "10px 20px",
+            display: "flex", flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 8 : 14,
+            borderBottom: `1px solid ${T.border}`,
+          }}>
+            {!isMobile && (
+              <div style={{ width: 50, fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Hora</div>
+            )}
             <input
               value={filterCliente}
               onChange={(e) => setFilterCliente(e.target.value)}
               placeholder="Buscar cliente…"
-              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text }}
+              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text, boxSizing: "border-box" }}
             />
             <input
               value={filterServico}
               onChange={(e) => setFilterServico(e.target.value)}
               placeholder="Buscar serviço…"
-              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text }}
+              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text, boxSizing: "border-box" }}
             />
             <input
               value={filterProfissional}
               onChange={(e) => setFilterProfissional(e.target.value)}
               placeholder="Buscar profissional…"
-              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text }}
+              style={{ flex: 1, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "6px 10px", fontSize: 12, color: T.text, boxSizing: "border-box" }}
             />
-            <div style={{ width: 90 }} />
+            {!isMobile && <div style={{ width: 90 }} />}
           </div>
         )}
         {!loading && sorted.length === 0 && (
@@ -448,15 +502,26 @@ function Dashboard() {
         )}
         {sorted.map((a, i) => (
           <div key={a.id} style={{ padding: "14px 20px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
-              <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
-              <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
-              <div style={{ flex: 1, fontSize: 13, color: T.text }}>{proName(a.professionalId)}</div>
-              <div style={{ width: 90, textAlign: "right" }}>
-                <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
+            {isMobile ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</span>
+                  <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
+                </div>
+                <div style={{ fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
+                <div style={{ fontSize: 13, color: T.muted, marginTop: 2 }}>{svcName(a.serviceId)} · {proName(a.professionalId)}</div>
+              </>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 50, fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</div>
+                <div style={{ flex: 1, fontSize: 14, color: T.text, fontWeight: 800 }}>{clientName(a.clientId)}</div>
+                <div style={{ flex: 1, fontSize: 13, color: T.text }}>{svcName(a.serviceId)}</div>
+                <div style={{ flex: 1, fontSize: 13, color: T.text }}>{proName(a.professionalId)}</div>
+                <div style={{ width: 90, textAlign: "right" }}>
+                  <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
+                </div>
               </div>
-            </div>
+            )}
             <AppointmentActions appointment={a} onChanged={reload} />
           </div>
         ))}
@@ -853,11 +918,11 @@ function Servicos() {
         </div>
       )}
 
-      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflowX: "auto" }}>
         {loading ? (
           <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", minWidth: 480, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${T.border}` }}>
                 {["Serviço", "Duração", "Preço", "Status", ""].map((h) => <th key={h} style={thStyle}>{h}</th>)}
@@ -996,6 +1061,7 @@ function ProfissionalDetalhe({ professional, allServices }) {
 const PROF_GRID_COLUMNS = "40px 1fr 1fr 1fr 1fr 90px 50px 90px";
 
 function Profissionais() {
+  const isMobile = useIsMobile();
   const [profissionais, setProfissionais] = useState([]);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1128,27 +1194,52 @@ function Profissionais() {
         <div style={{ fontSize: 12, color: T.muted }}>Nenhum profissional cadastrado ainda.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ padding: "0 16px 4px 16px", display: "grid", gridTemplateColumns: PROF_GRID_COLUMNS, alignItems: "center", gap: 14 }}>
-            <div />
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Nome</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>% Comissão</div>
-          </div>
+          {!isMobile && (
+            <div style={{ padding: "0 16px 4px 16px", display: "grid", gridTemplateColumns: PROF_GRID_COLUMNS, alignItems: "center", gap: 14 }}>
+              <div />
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Nome</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>Telefone</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>E-mail</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>% Comissão</div>
+            </div>
+          )}
           {profissionais.map((p) => (
             <div key={p.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", opacity: p.active === false ? 0.6 : 1 }}>
-              <div style={{ padding: 16, display: "grid", gridTemplateColumns: PROF_GRID_COLUMNS, alignItems: "center", gap: 14 }}>
-                <Avatar name={p.name} size={40} />
-                <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
-                <div style={{ fontSize: 13, color: T.text }}>{p.phone ? formatPhoneMask(p.phone) : "—"}</div>
-                <div style={{ fontSize: 13, color: T.text }}>{p.email}</div>
-                <div style={{ fontSize: 13, color: T.text }}>{p.commissionPercentage != null ? `${Number(p.commissionPercentage).toFixed(2).replace(".", ",")}%` : "—"}</div>
-                <ToggleSwitch on={p.active !== false} onClick={() => toggleAtivo(p)} />
-                <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
-                <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>
-                  {expanded === p.id ? "Fechar ▲" : "Detalhes ▼"}
-                </span>
-              </div>
+              {isMobile ? (
+                <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <Avatar name={p.name} size={40} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{p.email}</div>
+                    </div>
+                    <ToggleSwitch on={p.active !== false} onClick={() => toggleAtivo(p)} />
+                  </div>
+                  <div style={{ display: "flex", gap: 16, fontSize: 12, color: T.text }}>
+                    <span>{p.phone ? formatPhoneMask(p.phone) : "sem telefone"}</span>
+                    <span>{p.commissionPercentage != null ? `${Number(p.commissionPercentage).toFixed(2).replace(".", ",")}% comissão` : "sem comissão"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+                    <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>
+                      {expanded === p.id ? "Fechar ▲" : "Detalhes ▼"}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: 16, display: "grid", gridTemplateColumns: PROF_GRID_COLUMNS, alignItems: "center", gap: 14 }}>
+                  <Avatar name={p.name} size={40} />
+                  <div style={{ fontSize: 14, color: T.text, fontWeight: 700 }}>{p.name}</div>
+                  <div style={{ fontSize: 13, color: T.text }}>{p.phone ? formatPhoneMask(p.phone) : "—"}</div>
+                  <div style={{ fontSize: 13, color: T.text }}>{p.email}</div>
+                  <div style={{ fontSize: 13, color: T.text }}>{p.commissionPercentage != null ? `${Number(p.commissionPercentage).toFixed(2).replace(".", ",")}%` : "—"}</div>
+                  <ToggleSwitch on={p.active !== false} onClick={() => toggleAtivo(p)} />
+                  <span onClick={() => startEdit(p)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+                  <span onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{ fontSize: 12, color: T.muted, cursor: "pointer" }}>
+                    {expanded === p.id ? "Fechar ▲" : "Detalhes ▼"}
+                  </span>
+                </div>
+              )}
               {expanded === p.id && <ProfissionalDetalhe professional={p} allServices={services} />}
             </div>
           ))}
@@ -1845,6 +1936,8 @@ export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -1917,8 +2010,29 @@ export default function App() {
   };
 
   return (
-    <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: T.bg, minHeight: "100vh", display: "flex" }}>
-      <Sidebar active={page} setActive={setPage} user={user} onLogout={handleLogout} />
+    <div style={{
+      fontFamily: "'Inter', -apple-system, sans-serif", background: T.bg, minHeight: "100vh",
+      display: "flex", flexDirection: isMobile ? "column" : "row",
+    }}>
+      {isMobile && (
+        <div style={{
+          position: "sticky", top: 0, zIndex: 30, display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 16px", background: T.surface, borderBottom: `1px solid ${T.border}`,
+        }}>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            style={{
+              background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8,
+              width: 36, height: 36, color: T.text, fontSize: 16, cursor: "pointer",
+            }}
+          >☰</button>
+          <span style={{ fontSize: 13, color: T.gold, fontWeight: 800, letterSpacing: "0.08em" }}>BARBERARIA</span>
+        </div>
+      )}
+      <Sidebar
+        active={page} setActive={setPage} user={user} onLogout={handleLogout}
+        isMobile={isMobile} open={sidebarOpen} onClose={() => setSidebarOpen(false)}
+      />
       {render()}
     </div>
   );
