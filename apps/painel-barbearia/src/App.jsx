@@ -920,10 +920,29 @@ function Servicos() {
         </div>
       )}
 
-      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflowX: "auto" }}>
-        {loading ? (
-          <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>
-        ) : (
+      {loading ? (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {servicos.map((s) => (
+            <div key={s.id} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14, opacity: s.active ? 1 : 0.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: T.text, fontWeight: 700, minWidth: 0 }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>✂</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                </div>
+                <ToggleSwitch on={s.active} onClick={() => toggleAtivo(s)} />
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 13, marginBottom: 8 }}>
+                <span style={{ color: T.muted }}>{s.durationMinutes} min</span>
+                <span style={{ color: T.gold, fontWeight: 700 }}>{formatPrice(s.priceCents)}</span>
+              </div>
+              <span onClick={() => startEdit(s)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflowX: "auto" }}>
           <table style={{ width: "100%", minWidth: 480, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${T.border}` }}>
@@ -950,8 +969,8 @@ function Servicos() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
