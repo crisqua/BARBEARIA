@@ -504,7 +504,7 @@ function Dashboard() {
           <div key={a.id} style={{ padding: "14px 20px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>
             {isMobile ? (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.gold }}>{formatSlotTime(a.startsAt)}</span>
                   <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
                 </div>
@@ -650,7 +650,7 @@ function Agenda() {
                 )}
                 {!loading && items.map((a, i) => (
                   <div key={a.id} style={{ padding: "10px 16px", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.25)" : "none" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                       <span style={{ fontSize: 12, color: T.gold, fontWeight: 700 }}>{formatSlotTime(a.startsAt)}</span>
                       <Badge color={STATUS_COLOR[a.status]} small={a.status === "needs_reschedule"}>{STATUS_LABEL[a.status]}</Badge>
                     </div>
