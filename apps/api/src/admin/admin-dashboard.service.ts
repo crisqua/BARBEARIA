@@ -1,19 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { mapWithConcurrency } from '../common/batch-map.util';
-import { CacheService } from '../cache/cache.service';
 import { nowInBarbershopTime } from '../common/time.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
-
-const OVERVIEW_CACHE_KEY = 'admin:dashboard:overview';
-const OVERVIEW_CACHE_TTL_SECONDS = 90;
 
 @Injectable()
 export class AdminDashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
-    private readonly cache: CacheService,
   ) {}
 
   /**
@@ -25,22 +20,15 @@ export class AdminDashboardService {
    * tenant usando o mesmo `TenantContextService` que todo o resto do sistema já
    * usa pra RLS.
    *
-   * Isso soma 56+ tenants em ~3-15s (medido em homolog) mesmo com a concorrência
-   * limitada de `mapWithConcurrency` — é uma "foto" agregada da plataforma pro
-   * Super Admin, não precisa ser exata ao segundo. Cache curto (90s, sem
-   * invalidação ativa — só expira) absorve a maioria das chamadas repetidas sem
-   * esconder dado por muito tempo.
+   * SEM cache aqui, de propósito (removido em 2026-09-23) — esse overview soma
+   * tenants + users + appointments + subscriptions + payments, escritos por
+   * módulos demais pra invalidar com segurança sem esquecer um caminho.
+   * `mapWithConcurrency` (abaixo) já resolve o problema real (crash com muitos
+   * tenants); cache era só velocidade extra, e sem invalidação ele servia dado
+   * velho depois de qualquer escrita (pego pelos testes e2e — ver
+   * admin-dashboard.e2e-spec.ts, "reflete... recém-criados na contagem").
    */
   async overview() {
-    const cached = await this.cache.get<Awaited<ReturnType<typeof this.computeOverview>>>(OVERVIEW_CACHE_KEY);
-    if (cached) return cached;
-
-    const result = await this.computeOverview();
-    await this.cache.set(OVERVIEW_CACHE_KEY, result, OVERVIEW_CACHE_TTL_SECONDS);
-    return result;
-  }
-
-  private async computeOverview() {
     const now = nowInBarbershopTime();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));

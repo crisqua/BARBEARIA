@@ -5,6 +5,7 @@ import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
 import { tenantBrandingCacheKey } from '../tenants-public/tenant-branding-cache-key';
+import { SUBSCRIPTIONS_CACHE_KEY } from './admin-subscriptions.service';
 import { logActivity } from './activity-log.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -24,6 +25,10 @@ export class AdminTenantsService {
    * set_config manual aqui dentro, porque o tenant ainda não existia quando a
    * transação começou — TenantContextService não serve nesse caso específico
    * (ele assume um tenant_id já conhecido).
+   *
+   * Cria uma `subscription` junto (linha abaixo) — por isso também invalida
+   * o cache de `AdminSubscriptionsService.list()`, senão a lista fica até 90s
+   * sem mostrar a assinatura que acabou de nascer com o tenant.
    */
   async create(dto: CreateTenantDto) {
     const plan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
@@ -32,7 +37,7 @@ export class AdminTenantsService {
     const passwordHash = await hashPassword(dto.admin.password);
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const tenant = await tx.tenant.create({
           data: {
             slug: dto.slug,
@@ -62,6 +67,8 @@ export class AdminTenantsService {
 
         return { tenant, admin: { id: admin.id, email: admin.email }, subscription };
       });
+      await this.cache.del(SUBSCRIPTIONS_CACHE_KEY);
+      return result;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Slug já em uso.');

@@ -25,9 +25,10 @@ export class AdminPaymentsService {
     return tenant;
   }
 
+  /** Invalida o cache de `list()` depois de escrever — mesmo motivo de Subscriptions. */
   async createForTenant(tenantId: string, dto: CreatePaymentDto) {
     const tenant = await this.assertTenantExists(tenantId);
-    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+    const payment = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const payment = await tx.payment.create({
         data: {
           tenantId,
@@ -43,11 +44,13 @@ export class AdminPaymentsService {
       await logActivity(tx, tenantId, action, `Pagamento de R$ ${valor} (${payment.period}) registrado para "${tenant.name}".`);
       return payment;
     });
+    await this.cache.del(PAYMENTS_CACHE_KEY);
+    return payment;
   }
 
   async updateForTenant(tenantId: string, id: string, dto: UpdatePaymentDto) {
     const tenant = await this.assertTenantExists(tenantId);
-    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+    const updated = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException('Pagamento não encontrado.');
 
@@ -66,6 +69,8 @@ export class AdminPaymentsService {
 
       return updated;
     });
+    await this.cache.del(PAYMENTS_CACHE_KEY);
+    return updated;
   }
 
   /**

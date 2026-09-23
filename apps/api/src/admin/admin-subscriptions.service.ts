@@ -7,7 +7,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { logActivity } from './activity-log.util';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 
-const SUBSCRIPTIONS_CACHE_KEY = 'admin:subscriptions:all';
+export const SUBSCRIPTIONS_CACHE_KEY = 'admin:subscriptions:all';
 const SUBSCRIPTIONS_CACHE_TTL_SECONDS = 90;
 
 @Injectable()
@@ -75,7 +75,12 @@ export class AdminSubscriptionsService {
     return subscription;
   }
 
-  /** Upsert — tenants criados antes do Sprint 5 não têm assinatura ainda. */
+  /**
+   * Upsert — tenants criados antes do Sprint 5 não têm assinatura ainda.
+   * Invalida o cache de `list()` depois de escrever — sem isso, a lista
+   * ficaria até 90s mostrando a assinatura antiga (pego pelo teste e2e:
+   * "cria a assinatura via PATCH... lista cross-tenant paginada inclui").
+   */
   async upsertForTenant(tenantId: string, dto: UpdateSubscriptionDto) {
     const tenant = await this.assertTenantExists(tenantId);
 
@@ -85,7 +90,7 @@ export class AdminSubscriptionsService {
       if (!newPlan) throw new NotFoundException('Plano não encontrado.');
     }
 
-    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+    const result = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const existing = await tx.subscription.findUnique({ where: { tenantId }, include: { plan: true } });
 
       if (!existing) {
@@ -122,5 +127,8 @@ export class AdminSubscriptionsService {
 
       return updated;
     });
+
+    await this.cache.del(SUBSCRIPTIONS_CACHE_KEY);
+    return result;
   }
 }

@@ -37,6 +37,7 @@ export class AdminPayoutsService {
     return tenant;
   }
 
+  /** Invalida o cache de `list()` depois de escrever — mesmo motivo de Subscriptions/Payments. */
   async createForTenant(tenantId: string, dto: CreatePayoutDto) {
     const tenant = await this.assertTenantExists(tenantId);
     const payout = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
@@ -55,6 +56,7 @@ export class AdminPayoutsService {
       await logActivity(tx, tenantId, action, `Repasse de R$ ${valor} (${created.period}) registrado para "${tenant.name}".`);
       return created;
     });
+    await this.cache.del(PAYOUTS_CACHE_KEY);
     return serializePayout(payout);
   }
 
@@ -73,6 +75,7 @@ export class AdminPayoutsService {
 
       return updated;
     });
+    await this.cache.del(PAYOUTS_CACHE_KEY);
     return serializePayout(payout);
   }
 
