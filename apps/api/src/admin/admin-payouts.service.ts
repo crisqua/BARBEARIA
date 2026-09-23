@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { mapWithConcurrency } from '../common/batch-map.util';
+import { CacheService } from '../cache/cache.service';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
@@ -18,11 +20,15 @@ function serializePayout<T extends { feePct: unknown }>(payout: T) {
   return { ...payout, feePct: Number(payout.feePct) };
 }
 
+const PAYOUTS_CACHE_KEY = 'admin:payouts:all';
+const PAYOUTS_CACHE_TTL_SECONDS = 90;
+
 @Injectable()
 export class AdminPayoutsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly cache: CacheService,
   ) {}
 
   private async assertTenantExists(tenantId: string) {
@@ -70,21 +76,26 @@ export class AdminPayoutsService {
     return serializePayout(payout);
   }
 
+  /** Cache de 90s no resultado já ordenado (pré-paginação) — mesmo padrão de AdminPaymentsService. */
   async list(query: PaginationQueryDto) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
-    const tenants = await this.prisma.tenant.findMany({ select: { id: true, name: true } });
+    let items = await this.cache.get<Array<Record<string, unknown>>>(PAYOUTS_CACHE_KEY);
 
-    const perTenant = await Promise.all(
-      tenants.map((t) =>
+    if (!items) {
+      const tenants = await this.prisma.tenant.findMany({ select: { id: true, name: true } });
+
+      const perTenant = await mapWithConcurrency(tenants, 5, (t) =>
         this.tenantContext
           .runInTenantContext(t.id, (tx) => tx.payout.findMany({ where: { tenantId: t.id } }))
           .then((payouts) => payouts.map((p) => ({ ...serializePayout(p), tenantName: t.name }))),
-      ),
-    );
+      );
 
-    const items = perTenant.flat().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      items = perTenant.flat().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      await this.cache.set(PAYOUTS_CACHE_KEY, items, PAYOUTS_CACHE_TTL_SECONDS);
+    }
+
     const total = items.length;
     const start = (page - 1) * pageSize;
 

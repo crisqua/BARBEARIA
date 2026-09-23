@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
+import { mapWithConcurrency } from '../common/batch-map.util';
+import { CacheService } from '../cache/cache.service';
 import { nowInBarbershopTime } from '../common/time.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
+
+const OVERVIEW_CACHE_KEY = 'admin:dashboard:overview';
+const OVERVIEW_CACHE_TTL_SECONDS = 90;
 
 @Injectable()
 export class AdminDashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly cache: CacheService,
   ) {}
 
   /**
@@ -18,8 +24,23 @@ export class AdminDashboardService {
    * por design. Em vez de criar qualquer mecanismo de bypass novo, soma por
    * tenant usando o mesmo `TenantContextService` que todo o resto do sistema já
    * usa pra RLS.
+   *
+   * Isso soma 56+ tenants em ~3-15s (medido em homolog) mesmo com a concorrência
+   * limitada de `mapWithConcurrency` — é uma "foto" agregada da plataforma pro
+   * Super Admin, não precisa ser exata ao segundo. Cache curto (90s, sem
+   * invalidação ativa — só expira) absorve a maioria das chamadas repetidas sem
+   * esconder dado por muito tempo.
    */
   async overview() {
+    const cached = await this.cache.get<Awaited<ReturnType<typeof this.computeOverview>>>(OVERVIEW_CACHE_KEY);
+    if (cached) return cached;
+
+    const result = await this.computeOverview();
+    await this.cache.set(OVERVIEW_CACHE_KEY, result, OVERVIEW_CACHE_TTL_SECONDS);
+    return result;
+  }
+
+  private async computeOverview() {
     const now = nowInBarbershopTime();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
@@ -31,18 +52,16 @@ export class AdminDashboardService {
       this.prisma.tenant.findMany({ select: { id: true } }),
     ]);
 
-    const perTenant = await Promise.all(
-      tenants.map(({ id }) =>
-        this.tenantContext.runInTenantContext(id, async (tx) => {
-          const [barbers, appointments, subscription, pendingPayments] = await Promise.all([
-            tx.user.count({ where: { role: 'barbeiro', active: true } }),
-            tx.appointment.count({ where: { startsAt: { gte: monthStart, lt: monthEnd } } }),
-            tx.subscription.findUnique({ where: { tenantId: id }, include: { plan: true } }),
-            tx.payment.count({ where: { status: 'pending' } }),
-          ]);
-          return { barbers, appointments, subscription, pendingPayments };
-        }),
-      ),
+    const perTenant = await mapWithConcurrency(tenants, 5, ({ id }) =>
+      this.tenantContext.runInTenantContext(id, async (tx) => {
+        const [barbers, appointments, subscription, pendingPayments] = await Promise.all([
+          tx.user.count({ where: { role: 'barbeiro', active: true } }),
+          tx.appointment.count({ where: { startsAt: { gte: monthStart, lt: monthEnd } } }),
+          tx.subscription.findUnique({ where: { tenantId: id }, include: { plan: true } }),
+          tx.payment.count({ where: { status: 'pending' } }),
+        ]);
+        return { barbers, appointments, subscription, pendingPayments };
+      }),
     );
 
     const assinaturasAtivas = perTenant

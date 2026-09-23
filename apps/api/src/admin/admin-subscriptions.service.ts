@@ -1,15 +1,21 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
+import { CacheService } from '../cache/cache.service';
+import { mapWithConcurrency } from '../common/batch-map.util';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { logActivity } from './activity-log.util';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
+
+const SUBSCRIPTIONS_CACHE_KEY = 'admin:subscriptions:all';
+const SUBSCRIPTIONS_CACHE_TTL_SECONDS = 90;
 
 @Injectable()
 export class AdminSubscriptionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly cache: CacheService,
   ) {}
 
   /**
@@ -18,25 +24,35 @@ export class AdminSubscriptionsService {
    * sem bypass de RLS novo. Paginação obrigatória (seção 8 do CLAUDE.md) —
    * mesmo padrão em memória de AdminUsersService, já que não dá pra paginar
    * no banco uma leitura que já é feita por tenant.
+   *
+   * Cache de 90s no resultado cheio (antes da paginação) — sem isso, cada
+   * página pedida (1, 2, 3...) refaz a busca em todos os tenants do zero pra
+   * mostrar só um pedaço diferente do mesmo resultado.
    */
   async list(query: PaginationQueryDto) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
-    const tenants = await this.prisma.tenant.findMany({
-      select: { id: true, name: true, slug: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    let perTenant = await this.cache.get<Array<{ tenant: { id: string; name: string; slug: string }; subscription: unknown }>>(
+      SUBSCRIPTIONS_CACHE_KEY,
+    );
 
-    const perTenant = await Promise.all(
-      tenants.map((t) =>
+    if (!perTenant) {
+      const tenants = await this.prisma.tenant.findMany({
+        select: { id: true, name: true, slug: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      perTenant = await mapWithConcurrency(tenants, 5, (t) =>
         this.tenantContext
           .runInTenantContext(t.id, (tx) =>
             tx.subscription.findUnique({ where: { tenantId: t.id }, include: { plan: true } }),
           )
           .then((subscription) => ({ tenant: t, subscription })),
-      ),
-    );
+      );
+
+      await this.cache.set(SUBSCRIPTIONS_CACHE_KEY, perTenant, SUBSCRIPTIONS_CACHE_TTL_SECONDS);
+    }
 
     const total = perTenant.length;
     const start = (page - 1) * pageSize;
