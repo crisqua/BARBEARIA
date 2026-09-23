@@ -136,7 +136,8 @@ const Phone = ({ children, T }) => {
     return <div style={{ minHeight: "100vh", background: T.bg }}>{children}</div>;
   }
 
-  // Desktop: mantém a moldura de celular (útil pra demo/apresentação).
+  // Desktop: mantém a moldura de celular (útil pra demo/apresentação), mas sem
+  // a barra de status falsa (hora fixa e "···" sem função — só confundia).
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 24, minHeight: "100vh", background: "#080A10" }}>
       <div style={{
@@ -144,11 +145,6 @@ const Phone = ({ children, T }) => {
         border: `2px solid ${T.border}`, overflow: "hidden",
         boxShadow: "0 0 60px #00000080", height: "fit-content", maxHeight: "94vh", overflowY: "auto",
       }}>
-        <div style={{ background: T.bg, padding: "14px 24px 0", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
-          <span style={{ fontSize: 12, color: T.muted }}>9:41</span>
-          <div style={{ width: 100, height: 24, background: T.card, borderRadius: 12 }} />
-          <span style={{ fontSize: 12, color: T.muted }}>●●●</span>
-        </div>
         {children}
       </div>
     </div>
@@ -211,9 +207,9 @@ function LoginScreen({ T, tenant, onLogin, goRegister }) {
       <div style={{ padding: "40px 24px 32px" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           {tenant?.logoUrl ? (
-            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 56, height: 56, borderRadius: "50%", marginBottom: 8, objectFit: "cover" }} />
+            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 96, height: 96, borderRadius: "50%", marginBottom: 12, objectFit: "cover", border: `2px solid ${T.gold}55` }} />
           ) : (
-            <div style={{ fontSize: 36, marginBottom: 8 }}>✂</div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✂</div>
           )}
           <div style={{ fontSize: 20, fontWeight: 900, color: T.gold }}>Entrar</div>
         </div>
@@ -262,9 +258,9 @@ function RegisterScreen({ T, tenant, onRegister, goLogin }) {
       <div style={{ padding: "40px 24px 32px" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           {tenant?.logoUrl ? (
-            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 56, height: 56, borderRadius: "50%", marginBottom: 8, objectFit: "cover" }} />
+            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 96, height: 96, borderRadius: "50%", marginBottom: 12, objectFit: "cover", border: `2px solid ${T.gold}55` }} />
           ) : (
-            <div style={{ fontSize: 36, marginBottom: 8 }}>✂</div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✂</div>
           )}
           <div style={{ fontSize: 20, fontWeight: 900, color: T.gold }}>Criar conta</div>
         </div>
@@ -493,11 +489,11 @@ export default function App() {
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <div onClick={handleLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
         </div>
-        <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
+        <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
           {tenant.logoUrl ? (
-            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 56, height: 56, borderRadius: "50%", marginBottom: 8, objectFit: "cover" }} />
+            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 112, height: 112, borderRadius: "50%", marginBottom: 12, objectFit: "cover", border: `2px solid ${T.gold}55` }} />
           ) : (
-            <div style={{ fontSize: 40, marginBottom: 8 }}>✂</div>
+            <div style={{ fontSize: 56, marginBottom: 12 }}>✂</div>
           )}
           <div style={{ fontSize: 22, fontWeight: 900, color: T.gold, letterSpacing: "0.08em" }}>{tenant.name?.toUpperCase()}</div>
           {user && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Olá, {user.name}</div>}
