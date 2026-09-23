@@ -1039,7 +1039,7 @@ function ProfissionalDetalhe({ professional, allServices }) {
         {allServices.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum serviço cadastrado ainda.</div>}
         {allServices.map((s) => (
           <div key={s.id} onClick={() => toggleService(s.id)} style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
+            display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6,
             padding: "8px 10px", marginBottom: 6, borderRadius: 6, cursor: "pointer",
             border: `1px solid ${hasService(s.id) ? T.gold + "55" : T.border}`,
             background: hasService(s.id) ? T.gold + "0C" : "transparent",
@@ -1051,7 +1051,7 @@ function ProfissionalDetalhe({ professional, allServices }) {
       </div>
 
       <div style={isMobile ? {} : { flex: 1, minWidth: 260 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Horário de trabalho</div>
           <span onClick={() => setAddingHour((a) => !a)} style={{ fontSize: 11, color: T.gold, cursor: "pointer" }}>+ Adicionar</span>
         </div>
@@ -1067,7 +1067,7 @@ function ProfissionalDetalhe({ professional, allServices }) {
         )}
         {hours.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum horário cadastrado.</div>}
         {hours.map((h) => (
-          <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", marginBottom: 6, background: T.surface, borderRadius: 6 }}>
+          <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, padding: "8px 10px", marginBottom: 6, background: T.surface, borderRadius: 6 }}>
             <span style={{ fontSize: 12, color: T.text }}>{WEEKDAY_FULL[h.weekday]} · {h.startTime}–{h.endTime}</span>
             <span onClick={() => removeHour(h.id)} style={{ fontSize: 11, color: "#F25C5C", cursor: "pointer" }}>Remover</span>
           </div>
