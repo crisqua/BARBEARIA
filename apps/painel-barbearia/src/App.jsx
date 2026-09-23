@@ -449,7 +449,7 @@ function Dashboard() {
   const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
 
   return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+    <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Dashboard</div>
         <div style={{ fontSize: 13, color: T.muted, marginTop: 4, textTransform: "capitalize" }}>{hoje}</div>
@@ -532,6 +532,7 @@ function Dashboard() {
 
 // ─── AGENDA (navegável por dia, colunas por profissional) ──
 function Agenda() {
+  const isMobile = useIsMobile();
   const [professionals, setProfessionals] = useState([]);
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -579,7 +580,7 @@ function Agenda() {
   );
 
   return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+    <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Agenda</div>
         <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{professionals.length} profissionais</div>
@@ -602,24 +603,24 @@ function Agenda() {
         })}
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, marginBottom: 24 }}>
         <input
           value={filterCliente}
           onChange={(e) => setFilterCliente(e.target.value)}
           placeholder="Buscar cliente…"
-          style={{ flex: 1, minWidth: 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text }}
+          style={{ flex: 1, minWidth: isMobile ? undefined : 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text, boxSizing: "border-box" }}
         />
         <input
           value={filterServico}
           onChange={(e) => setFilterServico(e.target.value)}
           placeholder="Buscar serviço…"
-          style={{ flex: 1, minWidth: 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text }}
+          style={{ flex: 1, minWidth: isMobile ? undefined : 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text, boxSizing: "border-box" }}
         />
         <input
           value={filterProfissional}
           onChange={(e) => setFilterProfissional(e.target.value)}
           placeholder="Buscar profissional…"
-          style={{ flex: 1, minWidth: 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text }}
+          style={{ flex: 1, minWidth: isMobile ? undefined : 160, background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 12, color: T.text, boxSizing: "border-box" }}
         />
       </div>
 
@@ -832,6 +833,7 @@ const Assinaturas = () => {
 
 // ─── SERVIÇOS ─────────────────────────────────────────────
 function Servicos() {
+  const isMobile = useIsMobile();
   const [servicos, setServicos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | "new" | id
@@ -882,7 +884,7 @@ function Servicos() {
   };
 
   return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+    <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Serviços</div>
@@ -897,16 +899,16 @@ function Servicos() {
             {editing === "new" ? "Novo Serviço" : "Editar Serviço"}
           </div>
           {error && <ErrorBox>{error}</ErrorBox>}
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-            <div style={{ flex: 2, minWidth: 180 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, marginBottom: 16 }}>
+            <div style={isMobile ? {} : { flex: 2, minWidth: 180 }}>
               <FieldLabel>Nome do serviço</FieldLabel>
               <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Barba + Cabelo" style={fieldStyle} />
             </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
+            <div style={isMobile ? {} : { flex: 1, minWidth: 120 }}>
               <FieldLabel>Duração (min)</FieldLabel>
               <input value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: e.target.value.replace(/\D/g, "") }))} placeholder="45" style={fieldStyle} />
             </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
+            <div style={isMobile ? {} : { flex: 1, minWidth: 120 }}>
               <FieldLabel>Preço (R$)</FieldLabel>
               <input value={form.priceReais} onChange={(e) => setForm((f) => ({ ...f, priceReais: e.target.value }))} placeholder="0,00" style={fieldStyle} />
             </div>
@@ -1127,7 +1129,7 @@ function Profissionais() {
   };
 
   return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+    <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Profissionais</div>
@@ -1142,12 +1144,12 @@ function Profissionais() {
             {editing === "new" ? "Novo Profissional" : "Editar Profissional"}
           </div>
           {error && <ErrorBox>{error}</ErrorBox>}
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-            <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+            <div style={isMobile ? {} : { flex: 1, minWidth: 180 }}>
               <FieldLabel>Nome</FieldLabel>
               <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} style={fieldStyle} />
             </div>
-            <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={isMobile ? {} : { flex: 1, minWidth: 180 }}>
               <FieldLabel>E-mail</FieldLabel>
               <input
                 value={form.email}
@@ -1156,7 +1158,7 @@ function Profissionais() {
                 style={{ ...fieldStyle, opacity: editing !== "new" ? 0.6 : 1, cursor: editing !== "new" ? "not-allowed" : "text" }}
               />
             </div>
-            <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
               <FieldLabel>Telefone</FieldLabel>
               <input
                 value={form.phone}
@@ -1166,12 +1168,12 @@ function Profissionais() {
               />
             </div>
             {editing === "new" && (
-              <div style={{ flex: 1, minWidth: 140 }}>
+              <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
                 <FieldLabel>Senha inicial</FieldLabel>
                 <input type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} style={fieldStyle} />
               </div>
             )}
-            <div style={{ flex: 1, minWidth: 140 }}>
+            <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
               <FieldLabel>% Comissão</FieldLabel>
               <input
                 value={form.commissionPercentage}
@@ -1803,6 +1805,7 @@ const Satisfacao = () => {
 
 // ─── CONFIGURAÇÕES ────────────────────────────────────────
 function Config() {
+  const isMobile = useIsMobile();
   const [tenant, setTenant] = useState(null);
   const [cor1, setCor1] = useState("#C9A84C");
   const [cor2, setCor2] = useState("#0F0F0F");
@@ -1856,12 +1859,12 @@ function Config() {
   };
 
   return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+    <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Configurações</div>
         <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Identidade visual da barbearia</div>
       </div>
-      <div style={{ maxWidth: 420, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 24 }}>
+      <div style={{ maxWidth: 420, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: isMobile ? 16 : 24, boxSizing: "border-box" }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 20 }}>Identidade Visual</div>
         {error && <ErrorBox>{error}</ErrorBox>}
         <div style={{ marginBottom: 16 }}>
@@ -1870,12 +1873,12 @@ function Config() {
         </div>
         <div style={{ marginBottom: 16 }}>
           <FieldLabel>Logo</FieldLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             {logoUrl ? (
               <img
                 src={logoUrl}
                 alt="Logo"
-                style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${T.border}` }}
+                style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", border: `1px solid ${T.border}`, flexShrink: 0 }}
               />
             ) : (
               <div style={{ width: 56, height: 56, borderRadius: 8, border: `1px dashed ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: T.muted, flexShrink: 0 }}>
@@ -1910,9 +1913,13 @@ function Config() {
                 value={/^#[0-9a-fA-F]{6}$/.test(val) ? val : "#000000"}
                 onChange={(e) => setter(e.target.value)}
                 title="Escolher cor"
-                style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${T.border}`, padding: 0, cursor: "pointer", background: "none" }}
+                style={{ width: 36, height: 36, borderRadius: 6, border: `1px solid ${T.border}`, padding: 0, cursor: "pointer", background: "none", flexShrink: 0 }}
               />
-              <input value={val} onChange={(e) => setter(e.target.value)} style={fieldStyle} />
+              {/* flex:1 + minWidth:0 no lugar do width:100% do fieldStyle — do
+                  jeito que estava, o input tentava ser 100% da linha JUNTO
+                  com o quadradinho de cor ao lado, estourando ~46px em
+                  qualquer tela (mais visível no celular). */}
+              <input value={val} onChange={(e) => setter(e.target.value)} style={{ ...fieldStyle, width: "auto", flex: 1, minWidth: 0 }} />
             </div>
           </div>
         ))}
