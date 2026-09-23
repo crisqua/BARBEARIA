@@ -19,3 +19,7 @@ services:
         sync: false
       - key: JWT_EXPIRES_IN
         value: 15m
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

@@ -1,21 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  NotFoundException,
-  Patch,
-  Post,
-  Req,
-  UploadedFile,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { randomUUID } from 'crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
-import { Request } from 'express';
+import { Body, Controller, Get, NotFoundException, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -25,14 +8,9 @@ import { CacheService } from '../cache/cache.service';
 import { requireTenantId } from '../common/require-tenant-id';
 import { PrismaService } from '../prisma/prisma.service';
 import { tenantBrandingCacheKey } from '../tenants-public/tenant-branding-cache-key';
+import { LOGO_MIME_EXTENSIONS, PresignLogoDto } from './dto/presign-logo.dto';
 import { UpdateTenantBrandingDto } from './dto/update-tenant-branding.dto';
-
-const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2MB — mesmo limite já usado no onboarding do admin-desenvolvain
-const LOGO_MIME_EXTENSIONS: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/svg+xml': 'svg',
-};
+import { TenantLogoStorageService } from './tenant-logo-storage.service';
 
 /**
  * /v1/tenants/me — Admin da barbearia. Sempre filtra pelo tenant_id do JWT,
@@ -47,6 +25,7 @@ export class TenantsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly logoStorage: TenantLogoStorageService,
   ) {}
 
   @Get('me')
@@ -67,42 +46,16 @@ export class TenantsController {
   }
 
   /**
-   * Upload real do logo — MVP local: salva em disco (`uploads/logos/`, servido
-   * estaticamente por `main.ts`) e grava a URL absoluta em `tenants.logoUrl`.
-   * Dev-only por natureza: Render não tem disco persistente entre deploys.
-   * Antes de produção, trocar por presigned URL do Supabase Storage
-   * (seção 6.1.6 do CLAUDE.md) sem mudar o contrato desta rota.
+   * Presigned URL do Supabase Storage (seção 6.1.6 do CLAUDE.md) — o painel
+   * sobe o arquivo direto pro Supabase com a URL retornada aqui; o NestJS
+   * nunca vê os bytes. Tamanho máximo (2MB) e tipos aceitos são impostos
+   * pela config do próprio bucket `tenant-logos`, não só por essa validação.
+   * Depois do upload, o painel confirma com `PATCH /v1/tenants/me` (já
+   * existente) passando o `publicUrl` devolvido aqui.
    */
-  @Post('me/logo')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LOGO_MAX_BYTES } }))
-  async uploadLogo(
-    @CurrentUser() user: AuthenticatedUser,
-    @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request,
-  ) {
-    if (!file) throw new BadRequestException('Nenhum arquivo enviado.');
-
-    const extension = LOGO_MIME_EXTENSIONS[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException('Formato inválido. Use PNG, JPG ou SVG.');
-    }
-    if (file.size > LOGO_MAX_BYTES) {
-      throw new BadRequestException('Arquivo muito grande. Tamanho máximo: 2MB.');
-    }
-
-    const tenantId = requireTenantId(user);
-    const dir = join(process.cwd(), 'uploads', 'logos');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
-    const filename = `${tenantId}-${randomUUID()}.${extension}`;
-    writeFileSync(join(dir, filename), file.buffer);
-
-    const logoUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${filename}`;
-    const updated = await this.prisma.tenant.update({
-      where: { id: tenantId },
-      data: { logoUrl },
-    });
-    await this.cache.del(tenantBrandingCacheKey(updated.slug));
-    return updated;
+  @Post('me/logo/presign')
+  async presignLogo(@CurrentUser() user: AuthenticatedUser, @Body() dto: PresignLogoDto) {
+    const extension = LOGO_MIME_EXTENSIONS[dto.contentType];
+    return this.logoStorage.createUploadUrl(requireTenantId(user), extension);
   }
 }

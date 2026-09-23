@@ -1,5 +1,25 @@
+import { createClient } from "@supabase/supabase-js";
+
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 const TENANT_SLUG = import.meta.env.VITE_TENANT_SLUG;
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2MB — mesmo limite imposto no bucket do Supabase Storage
+const LOGO_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/svg+xml"];
+
+// Client Supabase só pra upload direto (storage) — chave anon, pública por design.
+// A autorização real do upload vem do token assinado devolvido pelo backend
+// (seção 6.1.6 do CLAUDE.md), não dessa chave.
+let supabaseClient = null;
+function getSupabaseClient() {
+  if (supabaseClient) return supabaseClient;
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error("Upload de logo indisponível: VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY não configuradas.");
+  }
+  supabaseClient = createClient(url, anonKey);
+  return supabaseClient;
+}
 
 const TOKEN_STORAGE_KEY = "barberaria_painel_access_token";
 let accessToken = localStorage.getItem(TOKEN_STORAGE_KEY) || null;
@@ -83,10 +103,33 @@ export const getMyTenant = () => apiFetch("/v1/tenants/me");
 
 export const updateMyTenant = (data) => apiFetch("/v1/tenants/me", { method: "PATCH", body: data });
 
-export const uploadTenantLogo = (file) => {
-  const form = new FormData();
-  form.append("file", file);
-  return apiFetch("/v1/tenants/me/logo", { method: "POST", body: form });
+/**
+ * Presigned URL do Supabase Storage (seção 6.1.6 do CLAUDE.md) — 3 passos:
+ * pede a URL assinada ao backend, sobe o arquivo direto pro Supabase (o
+ * NestJS nunca vê os bytes), e confirma a URL final no tenant via PATCH
+ * (rota que já existia). Validação de tipo/tamanho aqui é só feedback
+ * rápido — quem garante de verdade é a config do bucket no Supabase.
+ */
+export const uploadTenantLogo = async (file) => {
+  if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
+    throw new Error("Formato inválido. Use PNG, JPG ou SVG.");
+  }
+  if (file.size > LOGO_MAX_BYTES) {
+    throw new Error("Arquivo muito grande. Tamanho máximo: 2MB.");
+  }
+
+  const { token, path, publicUrl } = await apiFetch("/v1/tenants/me/logo/presign", {
+    method: "POST",
+    body: { contentType: file.type },
+  });
+
+  const supabase = getSupabaseClient();
+  const { error } = await supabase.storage.from("tenant-logos").uploadToSignedUrl(path, token, file);
+  if (error) {
+    throw new Error("Não foi possível enviar o arquivo. Tente novamente.");
+  }
+
+  return updateMyTenant({ logoUrl: publicUrl });
 };
 
 // ─── Serviços ──────────────────────────────────────────
