@@ -885,12 +885,12 @@ function Servicos() {
 
   return (
     <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 24, display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 12 : 0, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Serviços</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{servicos.length} serviços cadastrados · {servicos.filter((s) => s.active).length} ativos</div>
         </div>
-        <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Novo serviço</div>
+        <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", textAlign: "center" }}>+ Novo serviço</div>
       </div>
 
       {editing !== null && (
@@ -977,6 +977,7 @@ function Servicos() {
 
 // ─── PROFISSIONAIS ──────────────────────────────────────────
 function ProfissionalDetalhe({ professional, allServices }) {
+  const isMobile = useIsMobile();
   const [myServices, setMyServices] = useState([]);
   const [hours, setHours] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1030,10 +1031,10 @@ function ProfissionalDetalhe({ professional, allServices }) {
   if (loading) return <div style={{ padding: 16, fontSize: 12, color: T.muted, borderTop: `1px solid ${T.border}` }}>Carregando…</div>;
 
   return (
-    <div style={{ borderTop: `1px solid ${T.border}`, padding: 16, display: "flex", gap: 24, flexWrap: "wrap" }}>
+    <div style={{ borderTop: `1px solid ${T.border}`, padding: 16, display: "flex", flexDirection: isMobile ? "column" : "row", gap: 24 }}>
       {error && <div style={{ width: "100%" }}><ErrorBox>{error}</ErrorBox></div>}
 
-      <div style={{ flex: 1, minWidth: 220 }}>
+      <div style={isMobile ? {} : { flex: 1, minWidth: 220 }}>
         <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Serviços que realiza</div>
         {allServices.length === 0 && <div style={{ fontSize: 12, color: T.muted }}>Nenhum serviço cadastrado ainda.</div>}
         {allServices.map((s) => (
@@ -1049,7 +1050,7 @@ function ProfissionalDetalhe({ professional, allServices }) {
         ))}
       </div>
 
-      <div style={{ flex: 1, minWidth: 260 }}>
+      <div style={isMobile ? {} : { flex: 1, minWidth: 260 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Horário de trabalho</div>
           <span onClick={() => setAddingHour((a) => !a)} style={{ fontSize: 11, color: T.gold, cursor: "pointer" }}>+ Adicionar</span>
@@ -1149,12 +1150,12 @@ function Profissionais() {
 
   return (
     <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 24, display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 12 : 0, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center" }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Profissionais</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{profissionais.length} profissionais cadastrados · {profissionais.filter((p) => p.active !== false).length} ativos</div>
         </div>
-        <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Novo profissional</div>
+        <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", textAlign: "center" }}>+ Novo profissional</div>
       </div>
 
       {editing !== null && (
