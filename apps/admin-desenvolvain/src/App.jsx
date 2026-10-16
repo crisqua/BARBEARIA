@@ -1307,9 +1307,12 @@ const Financeiro = ({ tenantId, setTenantId }) => {
 
   const registrar = async () => {
     setError("");
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) { setError("Período deve estar no formato AAAA-MM (ex: 2026-08)."); return; }
+    if (!form.valorReais.trim()) { setError("Informe o valor do pagamento."); return; }
     const amountCents = Math.round(parseFloat(form.valorReais.replace(",", ".")) * 100);
     if (Number.isNaN(amountCents) || amountCents <= 0) { setError("Valor inválido."); return; }
+    if (!form.period.trim()) { setError("Informe o período do pagamento."); return; }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) { setError("Período deve estar no formato AAAA-MM (ex: 2026-08)."); return; }
+    if (!form.status) { setError("Selecione o status do pagamento."); return; }
 
     setSaving(true);
     try {
