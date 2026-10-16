@@ -15,9 +15,9 @@ import { UpdatePaymentDto } from './dto/update-payment.dto';
 export class AdminPaymentsController {
   constructor(private readonly adminPaymentsService: AdminPaymentsService) {}
 
-  @Get('admin/payments')
-  list(@Query() query: PaginationQueryDto) {
-    return this.adminPaymentsService.list(query);
+  @Get('admin/tenants/:tenantId/payments')
+  listForTenant(@Param('tenantId') tenantId: string, @Query() query: PaginationQueryDto) {
+    return this.adminPaymentsService.listForTenant(tenantId, query);
   }
 
   @Post('admin/tenants/:tenantId/payments')

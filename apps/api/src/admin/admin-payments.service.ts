@@ -1,6 +1,4 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { mapWithConcurrency } from '../common/batch-map.util';
-import { CacheService } from '../cache/cache.service';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
@@ -8,15 +6,11 @@ import { formatCentsBRL, logActivity } from './activity-log.util';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 
-const PAYMENTS_CACHE_KEY = 'admin:payments:all';
-const PAYMENTS_CACHE_TTL_SECONDS = 90;
-
 @Injectable()
 export class AdminPaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
-    private readonly cache: CacheService,
   ) {}
 
   private async assertTenantExists(tenantId: string) {
@@ -25,10 +19,9 @@ export class AdminPaymentsService {
     return tenant;
   }
 
-  /** Invalida o cache de `list()` depois de escrever — mesmo motivo de Subscriptions. */
   async createForTenant(tenantId: string, dto: CreatePaymentDto) {
     const tenant = await this.assertTenantExists(tenantId);
-    const payment = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const payment = await tx.payment.create({
         data: {
           tenantId,
@@ -44,13 +37,11 @@ export class AdminPaymentsService {
       await logActivity(tx, tenantId, action, `Pagamento de R$ ${valor} (${payment.period}) registrado para "${tenant.name}".`);
       return payment;
     });
-    await this.cache.del(PAYMENTS_CACHE_KEY);
-    return payment;
   }
 
   async updateForTenant(tenantId: string, id: string, dto: UpdatePaymentDto) {
     const tenant = await this.assertTenantExists(tenantId);
-    const updated = await this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
       const existing = await tx.payment.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException('Pagamento não encontrado.');
 
@@ -69,38 +60,31 @@ export class AdminPaymentsService {
 
       return updated;
     });
-    await this.cache.del(PAYMENTS_CACHE_KEY);
-    return updated;
   }
 
   /**
-   * RLS normal (Sprint 6, mesma decisão de Subscription) — soma por tenant, sem bypass novo.
-   * Cache de 90s no resultado já ordenado (pré-paginação) — o `.sort` por `createdAt` só
-   * roda antes de cachear, nunca depois de ler do cache (Redis serializa `Date` como
-   * string via JSON, quebraria um `.getTime()` numa leitura de cache).
+   * Pagamentos de UMA barbearia, sob demanda — mesmo padrão de `AdminTenantsService.getStats`
+   * (Sprint 8, admin-desenvolvain.md): substitui o antigo `list()` cross-tenant (loop em todas
+   * as barbearias + cache de 90s pra disfarçar o custo). 1 `runInTenantContext`, sem cache —
+   * já rápido por consultar só 1 tenant.
    */
-  async list(query: PaginationQueryDto) {
+  async listForTenant(tenantId: string, query: PaginationQueryDto) {
+    await this.assertTenantExists(tenantId);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
-    let items = await this.cache.get<Array<Record<string, unknown>>>(PAYMENTS_CACHE_KEY);
+    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+      const [items, total] = await Promise.all([
+        tx.payment.findMany({
+          where: { tenantId },
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        tx.payment.count({ where: { tenantId } }),
+      ]);
 
-    if (!items) {
-      const tenants = await this.prisma.tenant.findMany({ select: { id: true, name: true } });
-
-      const perTenant = await mapWithConcurrency(tenants, 5, (t) =>
-        this.tenantContext
-          .runInTenantContext(t.id, (tx) => tx.payment.findMany({ where: { tenantId: t.id } }))
-          .then((payments) => payments.map((p) => ({ ...p, tenantName: t.name }))),
-      );
-
-      items = perTenant.flat().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-      await this.cache.set(PAYMENTS_CACHE_KEY, items, PAYMENTS_CACHE_TTL_SECONDS);
-    }
-
-    const total = items.length;
-    const start = (page - 1) * pageSize;
-
-    return { items: items.slice(start, start + pageSize), total, page, pageSize };
+      return { items, total, page, pageSize };
+    });
   }
 }

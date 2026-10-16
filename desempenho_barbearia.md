@@ -152,7 +152,7 @@ Os tempos são p95, em milissegundos.
 | `GET /v1/admin/activity` | Atividade recente | 40 | **1.033** | ❌ |
 | `GET /v1/admin/users` | Usuários de todos os tenants | 56 | **1.125** | ❌ |
 | `GET /v1/admin/subscriptions` | Assinaturas de todos os tenants | 41 | **1.415** sem cache / 2 com cache | ❌ |
-| `GET /v1/admin/payments` | Pagamentos de todos os tenants | 31 | **1.133** sem cache / 2 com cache | ❌ |
+| `GET /v1/admin/payments` | Pagamentos de todos os tenants — **removido na Sprint 8** (ver seção 3.2), nota histórica | 31 | **1.133** sem cache / 2 com cache | ❌ |
 | `GET /v1/admin/payouts` | Repasses de todos os tenants | 32 | **1.107** sem cache / 2 com cache | ❌ |
 | `GET /v1/admin/tenants` | Lista barbearias | 7 | 50 | ✅ |
 | `GET /v1/admin/tenants/:id` | Detalhe barbearia | 4 | 48 | ✅ |
@@ -190,6 +190,14 @@ Os tempos são p95, em milissegundos.
   - Fazer cada transação por tenant juntar suas várias consultas em uma só ida ao banco.
   - Aumentar a concorrência, respeitando o pool.
   - Criar uma view ou função `SECURITY DEFINER` só de leitura agregada para o Super Admin. Isso seria uma exceção nova de RLS e precisa de aprovação explícita.
+- **Status:** ✅ Dashboard e Usuários corrigidos na Sprint 7 (admin-desenvolvain.md) — trocaram o loop
+  cross-tenant por "escolhe uma barbearia, consulta só ela". ✅ Pagamentos corrigido na Sprint 8, mesmo
+  padrão: `GET /v1/admin/payments` (linha da tabela acima, 1.133ms) **deixou de existir** —
+  `Financeiro` agora chama `GET /v1/admin/tenants/:id/payments` (1 tenant, sem cache, já rápido). A
+  métrica de 1.133ms fica só como registro histórico do problema que motivou a mudança, não é mais
+  remedível porque o endpoint que ela media não existe mais. Atividade recente e Assinaturas
+  permanecem no padrão antigo (cache de 90s) — não remedidos por esse sprint; Repasses também não é
+  desempenho, ver a observação de modelo de negócio em `admin-desenvolvain.md` seção 8.
 
 ### 3.3 Login, cadastro e criação de usuário sob concorrência
 - **Causa:** o `bcryptjs` (JavaScript puro) com custo 12 gasta ~330ms de CPU por hash, na thread principal do Node. As requisições simultâneas acabam enfileiradas.

@@ -8,9 +8,9 @@ import {
   getDashboardOverview,
   getSettings,
   getTenant,
+  getTenantPayments,
   getTenantStats,
   getUsers,
-  listPayments,
   listPayouts,
   listPlans,
   listSubscriptions,
@@ -278,7 +278,7 @@ const NAV = [
   {
     section: "Financeiro",
     items: [
-      { id: "financeiro", icon: "💰", label: "Receita & MRR" },
+      { id: "financeiro", icon: "💰", label: "Financeiro" },
       { id: "repasses", icon: "🔁", label: "Repasses" },
     ],
   },
@@ -1240,50 +1240,82 @@ const Planos = () => {
 };
 
 // ────────────────────────────────────────────────────────
-// TELA: FINANCEIRO / MRR
+// TELA: FINANCEIRO (por barbearia — Sprint 8, admin-desenvolvain.md)
 // ────────────────────────────────────────────────────────
-const emptyPaymentForm = { tenantId: "", valorReais: "", period: "", status: "pending" };
+const emptyPaymentForm = { valorReais: "", period: "", status: "pending" };
 
-const Financeiro = () => {
-  const [overview, setOverview] = useState(null);
-  const [payments, setPayments] = useState([]);
+const MONTH_FULL = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const MONTH_OPTIONS = MONTH_FULL.map((label, i) => ({ value: String(i + 1).padStart(2, "0"), label }));
+
+const Financeiro = ({ tenantId, setTenantId }) => {
   const [tenants, setTenants] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyPaymentForm);
   const [saving, setSaving] = useState(false);
   const [actingId, setActingId] = useState(null);
-  const [error, setError] = useState("");
+  const [filterMonth, setFilterMonth] = useState("");
+  const [filterYear, setFilterYear] = useState("");
 
-  const load = () =>
-    Promise.all([getDashboardOverview(), listPayments(), listTenants()]).then(([ov, paymentsRes, tenantsRes]) => {
-      setOverview(ov);
-      setPayments(paymentsRes.items);
-      setTenants(tenantsRes.items);
-    });
+  useEffect(() => { listTenants().then((res) => setTenants(res.items)); }, []);
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  const load = (id) => getTenantPayments(id, { pageSize: 100 }).then((res) => setPayments(res.items));
 
-  // "Pagamentos pendentes" não vem mais de overview.pendingPayments (removido
-  // do Dashboard na Sprint 7, ver admin-desenvolvain.md) — calculado aqui em
-  // cima do `payments` que esta tela já busca pra montar a lista, sem
-  // precisar de nenhum campo novo nem de outra chamada ao backend.
-  const pendingPayments = payments.filter((p) => p.status === "pending").length;
+  useEffect(() => {
+    if (!tenantId) {
+      setPayments([]);
+      setError("");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setShowForm(false);
+    setFilterMonth("");
+    setFilterYear("");
+    load(tenantId)
+      .catch((err) => setError(err.message || "Não foi possível carregar os pagamentos dessa barbearia."))
+      .finally(() => setLoading(false));
+  }, [tenantId]);
+
+  const selectedTenant = tenants.find((t) => t.id === tenantId);
+  const currentYear = new Date().getFullYear();
+  const yearOptions = [currentYear - 1, currentYear, currentYear + 1].map((y) => ({ value: String(y), label: String(y) }));
+
+  const now = new Date();
+  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const currentMonthLabel = `${MONTH_FULL[now.getMonth()]} de ${now.getFullYear()}`;
+  const currentMonthPayments = payments.filter((p) => p.period === currentPeriod);
+  const pagoEsteMes = currentMonthPayments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amountCents, 0);
+  const pendenteEsteMes = currentMonthPayments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amountCents, 0);
+
+  const hasPeriodFilter = Boolean(filterMonth && filterYear);
+  const selectedPeriod = hasPeriodFilter ? `${filterYear}-${filterMonth}` : "";
+  const sortedPayments = [...payments].sort((a, b) => b.period.localeCompare(a.period));
+  const filteredPayments = hasPeriodFilter ? sortedPayments.filter((p) => p.period === selectedPeriod) : sortedPayments.slice(0, 3);
+  const periodSummary = hasPeriodFilter
+    ? {
+        pago: filteredPayments.filter((p) => p.status === "paid").reduce((s, p) => s + p.amountCents, 0),
+        pendente: filteredPayments.filter((p) => p.status === "pending").reduce((s, p) => s + p.amountCents, 0),
+      }
+    : null;
+
+  const limparFiltro = () => { setFilterMonth(""); setFilterYear(""); };
 
   const abrirForm = () => { setForm(emptyPaymentForm); setError(""); setShowForm(true); };
 
   const registrar = async () => {
     setError("");
-    if (!form.tenantId) { setError("Escolha uma barbearia."); return; }
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) { setError("Período deve estar no formato AAAA-MM (ex: 2026-08)."); return; }
     const amountCents = Math.round(parseFloat(form.valorReais.replace(",", ".")) * 100);
     if (Number.isNaN(amountCents) || amountCents <= 0) { setError("Valor inválido."); return; }
 
     setSaving(true);
     try {
-      await createTenantPayment(form.tenantId, { amountCents, period: form.period, status: form.status });
+      await createTenantPayment(tenantId, { amountCents, period: form.period, status: form.status });
       setShowForm(false);
-      await load();
+      await load(tenantId);
     } catch (e) {
       setError(e.message || "Não foi possível registrar.");
     } finally {
@@ -1294,8 +1326,8 @@ const Financeiro = () => {
   const marcarPago = async (payment) => {
     setActingId(payment.id);
     try {
-      await updateTenantPayment(payment.tenantId, payment.id, { status: "paid" });
-      await load();
+      await updateTenantPayment(tenantId, payment.id, { status: "paid" });
+      await load(tenantId);
     } finally {
       setActingId(null);
     }
@@ -1303,81 +1335,122 @@ const Financeiro = () => {
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Receita & MRR</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Acompanhamento financeiro da plataforma</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Financeiro</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Escolha uma barbearia pra ver os pagamentos dela</div>
         </div>
-        <Btn size="sm" onClick={abrirForm}>+ Registrar pagamento</Btn>
-      </div>
-      <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-        <Stat label="MRR Atual" value={overview ? formatMoney(overview.mrrCents) : "…"} />
-        <Stat label="ARR Projetado" value={overview ? formatMoney(overview.mrrCents * 12) : "…"} sub="anualizado" />
-        <Stat label="Trials ativos" value={overview ? String(overview.trialsAtivos) : "…"} accent={T.warning} />
-        <Stat label="Pagamentos pendentes" value={loading ? "…" : String(pendingPayments)} accent={pendingPayments > 0 ? T.danger : T.success} />
-      </div>
-
-      {showForm && (
-        <div style={{ background: T.card, border: `1.5px solid ${T.lime}55`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.lime, marginBottom: 16 }}>Registrar pagamento</div>
-          {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-            <div style={{ flex: 2, minWidth: 180 }}>
-              <Select label="Barbearia" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
-                options={[{ value: "", label: "Selecione…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]} />
-            </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <Input label="Valor (R$)" value={form.valorReais} onChange={(e) => setForm((f) => ({ ...f, valorReais: e.target.value }))} placeholder="299,00" />
-            </div>
-            <div style={{ flex: 1, minWidth: 120 }}>
-              <Input label="Período (AAAA-MM)" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="2026-08" />
-            </div>
-            <div style={{ flex: 1, minWidth: 140 }}>
-              <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                options={[{ value: "pending", label: "Pendente" }, { value: "paid", label: "Pago" }]} />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div onClick={saving ? undefined : registrar} style={{ background: T.lime, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Registrar"}</div>
-            <div onClick={() => setShowForm(false)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
-      ) : payments.length === 0 ? (
-        <div style={{ fontSize: 12, color: T.muted }}>Nenhum pagamento registrado ainda.</div>
-      ) : (
-        <Table
-          cols={["Barbearia", "Valor", "Período", "Status", ""]}
-          rows={payments.map((p, i) => (
-            <TRow key={p.id} last={i === payments.length - 1} cells={[
-              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{p.tenantName}</span>,
-              <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{formatMoney(p.amountCents)}</span>,
-              <span style={{ fontSize: 13, color: T.muted }}>{p.period}</span>,
-              <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>,
-              p.status === "pending" ? (
-                <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
-              ) : null,
-            ]} />
-          ))}
-          mobileRows={payments.map((p) => (
-            <MobileCard key={p.id}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{p.tenantName}</span>
-                <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>
-              </div>
-              <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-                <span style={{ color: T.text, fontWeight: 600 }}>{formatMoney(p.amountCents)}</span>
-                <span style={{ color: T.muted }}>{p.period}</span>
-              </div>
-              {p.status === "pending" && (
-                <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
-              )}
-            </MobileCard>
-          ))}
+        <Select
+          value={tenantId ?? ""}
+          onChange={(e) => setTenantId(e.target.value)}
+          options={[{ value: "", label: "Selecione uma barbearia…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]}
         />
+      </div>
+
+      {!tenantId ? (
+        <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 12, padding: 60, textAlign: "center", color: T.muted, fontSize: 13 }}>
+          Selecione uma barbearia acima pra ver o financeiro dela.
+        </div>
+      ) : error ? (
+        <ErrorBox>{error}</ErrorBox>
+      ) : loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : (
+        <div>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Este mês ({currentMonthLabel}) — {selectedTenant?.name}</div>
+              <Btn size="sm" onClick={abrirForm}>+ Registrar pagamento</Btn>
+            </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <Stat label="Pago este mês" value={formatMoney(pagoEsteMes)} accent={T.success} />
+              <Stat label="Pendente este mês" value={formatMoney(pendenteEsteMes)} accent={pendenteEsteMes > 0 ? T.danger : T.success} />
+            </div>
+          </div>
+
+          {showForm && (
+            <div style={{ background: T.card, border: `1.5px solid ${T.lime}55`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.lime, marginBottom: 16 }}>Registrar pagamento</div>
+              {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <Input label="Valor (R$)" value={form.valorReais} onChange={(e) => setForm((f) => ({ ...f, valorReais: e.target.value }))} placeholder="299,00" />
+                </div>
+                <div style={{ flex: 1, minWidth: 120 }}>
+                  <Input label="Período (AAAA-MM)" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="2026-08" />
+                </div>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                    options={[{ value: "pending", label: "Pendente" }, { value: "paid", label: "Pago" }]} />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div onClick={saving ? undefined : registrar} style={{ background: T.lime, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Registrar"}</div>
+                <div onClick={() => setShowForm(false)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 6, flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Histórico de pagamentos</div>
+              <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>
+                {hasPeriodFilter ? `Mostrando ${MONTH_FULL[parseInt(filterMonth, 10) - 1]} de ${filterYear}` : "Mostrando os 3 meses mais recentes — pra ver mais pra trás, escolha o mês/ano ao lado"}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}
+                options={[{ value: "", label: "Mês" }, ...MONTH_OPTIONS]} />
+              <Select value={filterYear} onChange={(e) => setFilterYear(e.target.value)}
+                options={[{ value: "", label: "Ano" }, ...yearOptions]} />
+              {hasPeriodFilter && (
+                <Btn variant="ghost" size="sm" onClick={limparFiltro}>Limpar</Btn>
+              )}
+            </div>
+          </div>
+
+          {periodSummary && (
+            <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", gap: 24, fontSize: 12.5 }}>
+              <span style={{ color: T.muted }}>Resumo do período:</span>
+              <span style={{ color: T.success, fontWeight: 600 }}>Pago: {formatMoney(periodSummary.pago)}</span>
+              <span style={{ color: periodSummary.pendente > 0 ? T.danger : T.muted, fontWeight: 600 }}>Pendente: {formatMoney(periodSummary.pendente)}</span>
+            </div>
+          )}
+
+          {filteredPayments.length === 0 ? (
+            <div style={{ fontSize: 12, color: T.muted }}>
+              {hasPeriodFilter ? "Nenhum pagamento nesse período." : "Nenhum pagamento registrado ainda."}
+            </div>
+          ) : (
+            <Table
+              cols={["Valor", "Período", "Status", ""]}
+              rows={filteredPayments.map((p, i) => (
+                <TRow key={p.id} last={i === filteredPayments.length - 1} cells={[
+                  <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{formatMoney(p.amountCents)}</span>,
+                  <span style={{ fontSize: 13, color: T.muted }}>{p.period}</span>,
+                  <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>,
+                  p.status === "pending" ? (
+                    <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
+                  ) : null,
+                ]} />
+              ))}
+              mobileRows={filteredPayments.map((p) => (
+                <MobileCard key={p.id}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{formatMoney(p.amountCents)}</span>
+                    <Badge color={p.status === "paid" ? T.success : T.warning}>{p.status === "paid" ? "pago" : "pendente"}</Badge>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+                    <span style={{ color: T.muted }}>{p.period}</span>
+                  </div>
+                  {p.status === "pending" && (
+                    <span onClick={actingId === p.id ? undefined : () => marcarPago(p)} style={{ fontSize: 12, color: T.lime, cursor: actingId === p.id ? "default" : "pointer" }}>Marcar como pago</span>
+                  )}
+                </MobileCard>
+              ))}
+            />
+          )}
+        </div>
       )}
     </div>
   );
@@ -1412,7 +1485,7 @@ function buildBars(monthlyAppointments) {
 
 const USUARIOS_PAGE_SIZE = 10;
 
-const Usuarios = () => {
+const Usuarios = ({ setActive, setFinanceiroTenantId }) => {
   const [tenants, setTenants] = useState([]);
   const [tenantId, setTenantId] = useState("");
   const [stats, setStats] = useState(null);
@@ -1491,6 +1564,16 @@ const Usuarios = () => {
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : (
         <div>
+          <div style={{ marginBottom: 16 }}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              onClick={() => { setFinanceiroTenantId(tenantId); setActive("financeiro"); }}
+            >
+              Ver financeiro desta barbearia →
+            </Btn>
+          </div>
+
           {/* Stats */}
           <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
             <Stat label="Agendamentos este mês" value={String(stats.appointmentsThisMonth)} />
@@ -2069,6 +2152,9 @@ export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
+  // Barbearia selecionada ao navegar de Usuários pra Financeiro (Sprint 8, admin-desenvolvain.md) —
+  // state levantado aqui porque os dois componentes são irmãos, sem relação pai/filho direta.
+  const [financeiroTenantId, setFinanceiroTenantId] = useState(null);
   const [, setThemeTick] = useState(0); // força re-render depois de applyTheme mutar T
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2137,9 +2223,9 @@ export default function App() {
     if (page === "onboarding")  return <Onboarding setActive={setPage} />;
     if (page === "planos")      return <Planos />;
     if (page === "assinaturas") return <Assinaturas />;
-    if (page === "financeiro")  return <Financeiro />;
+    if (page === "financeiro")  return <Financeiro tenantId={financeiroTenantId} setTenantId={setFinanceiroTenantId} />;
     if (page === "repasses")    return <Repasses />;
-    if (page === "usuarios")    return <Usuarios />;
+    if (page === "usuarios")    return <Usuarios setActive={setPage} setFinanceiroTenantId={setFinanceiroTenantId} />;
     if (page === "suporte")     return <Suporte />;
     if (page === "releases")    return <Releases />;
     if (page === "config")      return <Config onThemeChange={handleThemeChange} />;

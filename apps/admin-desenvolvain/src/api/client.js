@@ -111,10 +111,10 @@ export const listSubscriptions = (params = {}) => {
 export const updateTenantSubscription = (tenantId, data) =>
   apiFetch(`/v1/admin/tenants/${tenantId}/subscription`, { method: "PATCH", body: data });
 
-// ─── Pagamentos ──────────────────────────────────────────
-export const listPayments = (params = {}) => {
+// ─── Pagamentos (por barbearia — Sprint 8, admin-desenvolvain.md) ───────
+export const getTenantPayments = (tenantId, params = {}) => {
   const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
-  return apiFetch(`/v1/admin/payments?${query}`);
+  return apiFetch(`/v1/admin/tenants/${tenantId}/payments?${query}`);
 };
 
 export const createTenantPayment = (tenantId, data) =>

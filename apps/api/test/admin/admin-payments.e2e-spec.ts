@@ -11,7 +11,7 @@ import {
   seedTenantWithUser,
 } from '../utils/seed-auth-fixtures';
 
-describe('Pagamentos do Super Admin (/v1/admin/tenants/:id/payments, /v1/admin/payments)', () => {
+describe('Pagamentos do Super Admin (/v1/admin/tenants/:id/payments)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantContext: TenantContextService;
@@ -19,6 +19,7 @@ describe('Pagamentos do Super Admin (/v1/admin/tenants/:id/payments, /v1/admin/p
   let superAdminToken: string;
   let regularAdminToken: string;
   let seededTenant: SeededTenantUser;
+  let seededTenantB: SeededTenantUser;
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -38,13 +39,19 @@ describe('Pagamentos do Super Admin (/v1/admin/tenants/:id/payments, /v1/admin/p
       password: seededTenant.password,
     });
     regularAdminToken = adminLogin.body.accessToken;
+
+    seededTenantB = await seedTenantWithUser(prisma, tenantContext, { slugPrefix: 'pay-admin-b', role: 'admin' });
   });
 
   afterAll(async () => {
     await tenantContext
       .runInTenantContext(seededTenant.tenantId, (tx) => tx.payment.deleteMany({ where: { tenantId: seededTenant.tenantId } }))
       .catch(() => {});
+    await tenantContext
+      .runInTenantContext(seededTenantB.tenantId, (tx) => tx.payment.deleteMany({ where: { tenantId: seededTenantB.tenantId } }))
+      .catch(() => {});
     await cleanupTenantWithUser(prisma, tenantContext, seededTenant.tenantId).catch(() => {});
+    await cleanupTenantWithUser(prisma, tenantContext, seededTenantB.tenantId).catch(() => {});
     await cleanupSuperAdmin(prisma, superAdmin.userId);
     await app.close();
   });
@@ -65,7 +72,7 @@ describe('Pagamentos do Super Admin (/v1/admin/tenants/:id/payments, /v1/admin/p
     expect(res.status).toBe(400);
   });
 
-  it('registra pagamento pendente, marca como pago (paidAt automático) e aparece na lista cross-tenant', async () => {
+  it('registra pagamento pendente, marca como pago (paidAt automático) e aparece na lista da barbearia', async () => {
     const created = await request(app.getHttpServer())
       .post(`/v1/admin/tenants/${seededTenant.tenantId}/payments`)
       .set('Authorization', `Bearer ${superAdminToken}`)
@@ -82,11 +89,59 @@ describe('Pagamentos do Super Admin (/v1/admin/tenants/:id/payments, /v1/admin/p
     expect(paid.body.paidAt).not.toBeNull();
 
     const list = await request(app.getHttpServer())
-      .get('/v1/admin/payments')
+      .get(`/v1/admin/tenants/${seededTenant.tenantId}/payments`)
       .query({ pageSize: 100 })
       .set('Authorization', `Bearer ${superAdminToken}`);
     expect(list.status).toBe(200);
     const found = list.body.items.find((p: { id: string }) => p.id === created.body.id);
-    expect(found).toMatchObject({ status: 'paid', tenantName: `Barbearia pay-admin` });
+    expect(found).toMatchObject({ status: 'paid' });
+  });
+
+  it('admin de barbearia não pode listar pagamentos (nem os da própria barbearia)', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/admin/tenants/${seededTenant.tenantId}/payments`)
+      .set('Authorization', `Bearer ${regularAdminToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('404 pra barbearia inexistente', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/admin/tenants/00000000-0000-0000-0000-000000000000/payments')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('isolamento: pagamento da barbearia A não aparece na lista da barbearia B', async () => {
+    const createdB = await request(app.getHttpServer())
+      .post(`/v1/admin/tenants/${seededTenantB.tenantId}/payments`)
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ amountCents: 15000, period: '2026-08' });
+    expect(createdB.status).toBe(201);
+
+    const listB = await request(app.getHttpServer())
+      .get(`/v1/admin/tenants/${seededTenantB.tenantId}/payments`)
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(listB.status).toBe(200);
+    expect(listB.body.items.some((p: { id: string }) => p.id === createdB.body.id)).toBe(true);
+    expect(listB.body.items.some((p: { amountCents: number }) => p.amountCents === 29900)).toBe(false);
+
+    const listA = await request(app.getHttpServer())
+      .get(`/v1/admin/tenants/${seededTenant.tenantId}/payments`)
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(listA.body.items.some((p: { id: string }) => p.id === createdB.body.id)).toBe(false);
+  });
+
+  it('paginação: respeita page/pageSize e devolve o total correto', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/v1/admin/tenants/${seededTenant.tenantId}/payments`)
+      .query({ page: 1, pageSize: 1 })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.items.length).toBe(1);
+    expect(res.body.page).toBe(1);
+    expect(res.body.pageSize).toBe(1);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
   });
 });

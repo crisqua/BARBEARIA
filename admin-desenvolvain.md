@@ -59,8 +59,8 @@ compartilhado, não Context — funciona porque todo componente do arquivo lê `
 | `Payout` (Repasse) | Sim | **Normal** | ✅ Sprint 6 |
 | `PlatformSettings` | Não | Isenta (singleton global) | ✅ feature extra |
 | `PlatformActivity` | Sim | **Normal** | ✅ feature extra |
-| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 9 |
-| `Release` | Não | Isenta (planejado) | ⏳ Sprint 10 (parcial) |
+| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 10 |
+| `Release` | Não | Isenta (planejado) | ⏳ Sprint 11 (parcial) |
 
 ### Mudança de decisão registrada durante a execução (Sprint 5)
 
@@ -146,7 +146,7 @@ dessincronizar): `tenant_created`/`tenant_suspended`/`tenant_reactivated` (`Admi
 Helper único (`activity-log.util.ts`) grava e formata os valores em R$ pt-BR. Leitura cross-tenant
 soma por tenant via `TenantContextService`, mesmo padrão do resto do painel. **Ficam de fora de
 propósito:** "Trial expirado" e "Suporte aberto" — nenhum dos dois tem regra de negócio ou módulo
-implementado ainda (cron de expiração e `SupportTicket` do Sprint 8, respectivamente).
+implementado ainda (cron de expiração e `SupportTicket` do Sprint 10, respectivamente).
 
 ### ✅ Feature extra (fora da sequência) — Validação obrigatória no Onboarding
 O wizard de Nova Barbearia deixava avançar de passo (via botão "Próximo" ou clicando direto numa
@@ -265,21 +265,107 @@ fictício — usado pra validar o layout e fechar as decisões acima antes de me
 7. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual no
    painel local se o backend estiver de pé.
 
-### ⏳ Sprint 8 — Impersonação ("Acessar como admin") — não iniciado
+### ⏳ Sprint 8 — Financeiro por barbearia (drill-down, mesmo padrão da Sprint 7) — planejado
+
+**Motivação:** o relatório de desempenho (`desempenho_barbearia.md`, item 3.2) lista `GET
+/v1/admin/payments` entre as telas cross-tenant que crescem com o número de barbearias (1.133ms sem
+cache / 2ms com cache, TTL de 90s hoje escondendo o problema, não resolvendo). A Sprint 7 já aplicou
+o padrão "escolhe uma barbearia, consulta só ela" em Dashboard/Usuários — esse sprint estende o mesmo
+padrão pra tela Financeiro (hoje "Receita & MRR"), fechando a lista de telas lentas junto com
+Dashboard/Usuários (restam fora desse padrão: Atividade recente e Assinaturas — cache de 90s
+aceito por ora; Repasses tem problema de modelo de negócio registrado à parte na seção 8, não é
+questão de desempenho).
+
+**Decisão de produto, confirmada na conversa (2026-10-16):** a tela deixa de mostrar MRR/ARR/Trials
+cross-tenant (hoje redundante — o Dashboard já cobre MRR desde a Sprint 7) e passa a trabalhar sobre
+**uma barbearia selecionada por vez**, com três blocos:
+1. **Dash do mês atual** — "pago este mês" / "pendente este mês", calculado em cima da mesma lista
+   de pagamentos que a tela já busca pra essa barbearia (sem endpoint nem query adicional só pra isso).
+2. **Registrar pagamento** — mesmo formulário de hoje, menos o campo "Barbearia" (a barbearia já vem
+   pré-selecionada pela tela; deixa de fazer sentido escolher de novo dentro do formulário).
+3. **Histórico de pagamentos** — mostra por padrão só os 3 meses mais recentes; pra consultar período
+   mais antigo, filtro por Mês + Ano (dois `<select>` custom-estilizados — não o `<input
+   type="month">` nativo, testado no protótipo e descartado por estética inconsistente com o resto do
+   painel) exibindo um resumo (total pago/pendente) do período filtrado.
+
+**Navegação:** o botão "Ver financeiro desta barbearia →" na tela Usuários (drill-down da Sprint 7)
+leva pra Financeiro com a barbearia já selecionada, sem pedir de novo. No protótipo (canvas separado,
+arquivos `.dc.html` isolados sem state compartilhado nativo) isso precisou de um contorno via
+`localStorage` lido a cada render; **no app real isso não se aplica** — `Usuarios` e `Financeiro` são
+componentes dentro da mesma árvore React de `App.jsx`, então a barbearia selecionada é só um state
+comum levantado pro componente `App` (`financeiroTenantId` + setter, passados como prop pros dois
+componentes), sem localStorage nem hash.
+
+**Protótipo visual aprovado** (canvas separado, não é código do app, mesmo espírito do protótipo da
+Sprint 7) cobrindo a jornada completa — seleção de barbearia, dash do mês, registro de pagamento,
+histórico com filtro Mês/Ano — usado pra validar o layout e fechar as decisões acima antes de mexer
+no código real.
+
+**Decisão confirmada (2026-10-16):** `GET /v1/admin/payments` (cross-tenant) será **removido**, não
+mantido — fica sem nenhum consumidor depois dessa mudança (único uso era `Financeiro` via
+`listPayments()`, que deixa de existir). Confirmado com o grep: nenhum outro lugar do frontend chama
+isso. Três pontos além do controller/service que também referenciam esse endpoint e precisam ser
+limpos junto (achado ao conferir antes de planejar a fase 1):
+- `admin-payments.service.ts` — método `list()` (cross-tenant, cacheado) inteiro sai, junto com
+  `assertTenantExists` se não for mais usado por mais nada depois da remoção (conferir).
+- `admin-payments.controller.ts` — rota `@Get('admin/payments')` sai.
+- `test/admin/admin-payments.e2e-spec.ts` — bloco de teste que teste esse `GET` (em torno da linha 85)
+  sai; o describe do arquivo cita os dois endpoints no título, ajustar.
+- `scripts/benchmark/bench.mjs` — linha que mede `GET /v1/admin/payments` (usada no relatório de
+  desempenho) sai, já que o endpoint deixa de existir; `desempenho_barbearia.md` fica com uma nota
+  histórica (a métrica existiu, motivou esse sprint, não existe mais pra remedir).
+- `src/api/client.js` — `listPayments()` sai; `App.jsx` perde o `import { listPayments }`.
+
+**Arquivos — Backend:**
+
+| Arquivo | Mudança |
+|---|---|
+| `admin-payments.service.ts` | Novo método `listForTenant(tenantId, query?)` — 1 `runInTenantContext`, sem cache (já rápido, consulta só 1 tenant, mesmo raciocínio do `getStats` da Sprint 7) |
+| `admin-payments.controller.ts` | Rota nova `GET /v1/admin/tenants/:tenantId/payments` |
+| `test/admin/admin-payments.e2e-spec.ts` | Testes novos pra `listForTenant`: RBAC (403 não-super_admin), isolamento (barbearia A não vê pagamento de B), paginação |
+
+Sem mudança de schema/migration — `Payment` já tem `period` (formato `AAAA-MM`), suficiente pro
+filtro Mês/Ano sem campo novo.
+
+**Arquivos — Frontend:**
+
+| Arquivo | Mudança |
+|---|---|
+| `src/api/client.js` | `getTenantPayments(tenantId)` novo |
+| `App` (componente raiz) | State novo `financeiroTenantId` + setter, passado como prop pra `Usuarios` e `Financeiro` |
+| `Usuarios` | Botão "Ver financeiro desta barbearia →" chama o setter antes de navegar pra Financeiro |
+| `Financeiro` | Reescrito: seletor de barbearia (pré-preenchido quando vem de Usuários, mesmo padrão de `<select>` da Sprint 7), dash do mês atual, formulário de registro sem campo Barbearia, histórico 3 meses + filtro Mês/Ano com resumo do período |
+| `NAV` | Label "Receita & MRR" → "Financeiro" (mesmo id/rota — ao contrário de Usuários na Sprint 7, o item continua no menu) |
+
+**Plano de implementação, em fases (ordem de execução):**
+
+1. **Endpoint novo de pagamentos por barbearia** (backend) — `listForTenant` em
+   `admin-payments.service.ts`, rota em `admin-payments.controller.ts`, testes de RBAC + isolamento
+   em `admin-payments.e2e-spec.ts`.
+2. **Cliente de API + state compartilhado** — `getTenantPayments` em `client.js`; state
+   `financeiroTenantId` levantado pro `App`, passado pros dois componentes.
+3. **Financeiro (frontend), reescrita completa** — seletor de barbearia, dash do mês, formulário sem
+   campo Barbearia, histórico com filtro Mês/Ano e resumo de período, seguindo o protótipo aprovado.
+4. **Usuários (frontend), ajuste pequeno** — botão "Ver financeiro desta barbearia →" setando o
+   state compartilhado antes de navegar.
+5. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual
+   no painel local.
+
+### ⏳ Sprint 9 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
 
-### ⏳ Sprint 9 — Suporte — não iniciado
+### ⏳ Sprint 10 — Suporte — não iniciado
 `SupportTicket` com RLS normal. Spike técnico necessário: leitura cross-tenant sob RLS normal (mesmo
 padrão de soma por tenant já usado em todo o resto — não deveria precisar de `BYPASSRLS` dedicado
 como o plano original cogitava, já que o mesmo mecanismo de `TenantContextService` resolve isso desde
 o Sprint 2).
 
-### ⏳ Sprint 10 — Releases — parcialmente feito
+### ⏳ Sprint 11 — Releases — parcialmente feito
 Configurações já está pronta (ver acima). Falta só `Release` (changelog, leitura manual, inserido
 pelos devs a cada deploy).
 
-### ⏳ Sprint 11 — Deploy — não iniciado
+### ⏳ Sprint 12 — Deploy — não iniciado
 Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
 
@@ -308,8 +394,11 @@ pelo uso manual do painel — colisão de dado de ambiente, não bug).
   do protótipo visual original (que tinha telas de loja/comissão/financeiro avançado), implementada
   no Sprint 6 sem confrontar contra o modelo de negócio real na hora. **Decisão do usuário: deixar
   como está por enquanto**, só registrado — não remover nem corrigir até decisão futura.
-- **Impersonação (Sprint 8):** ainda não implementada — maior risco de segurança do que falta
+- **Impersonação (Sprint 9):** ainda não implementada — maior risco de segurança do que falta
   construir, não pular a revisão dedicada quando chegar a vez.
+- **Financeiro cross-tenant (`GET /v1/admin/payments`):** decidido remover na Sprint 8 (não manter) —
+  ver seção 6, Sprint 8, lista de arquivos afetados pela remoção (controller, service, teste,
+  benchmark, client.js).
 - **Upload de logo:** só client-side por enquanto (preview local), sem persistência — se isso virar
   prioridade, precisa de uma decisão de infra (Supabase Storage, presigned URL) antes de implementar,
   conforme seção 6.1.6 do `CLAUDE.md`.

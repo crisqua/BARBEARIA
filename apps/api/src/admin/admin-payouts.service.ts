@@ -79,7 +79,12 @@ export class AdminPayoutsService {
     return serializePayout(payout);
   }
 
-  /** Cache de 90s no resultado já ordenado (pré-paginação) — mesmo padrão de AdminPaymentsService. */
+  /**
+   * Cache de 90s no resultado já ordenado (pré-paginação) — padrão que `AdminPaymentsService`
+   * também usava até a Sprint 8 (admin-desenvolvain.md), quando o equivalente de pagamentos virou
+   * tenant-scoped (`listForTenant`) e perdeu a necessidade de cache. Repasses continua cross-tenant
+   * por ora — não é desempenho que está parado, é modelo de negócio (ver seção 8).
+   */
   async list(query: PaginationQueryDto) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
