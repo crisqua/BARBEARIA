@@ -520,6 +520,12 @@ export default function App() {
       } else {
         await createAppointment(selectedService.id, selectedPro.id, selectedSlot);
       }
+      // Bug real (achado em 16/10/2026, depois da Sprint 16 deixar o Início mostrar
+      // o próximo agendamento ao vivo): esse state nunca era atualizado aqui, só em
+      // handleCancel — a tela Início ficava com dado velho até o próximo refresh
+      // indireto (login de novo, cancelar algo). Mesmo padrão de handleCancel.
+      const r = await listAppointments();
+      setAppointments(r.items);
       setScreen("confirmacao");
     } catch (e) {
       setBookingError(e.message || "Não foi possível confirmar. Escolha outro horário.");
