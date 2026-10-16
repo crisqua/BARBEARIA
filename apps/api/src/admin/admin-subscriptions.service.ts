@@ -3,7 +3,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
 import { CacheService } from '../cache/cache.service';
 import { mapWithConcurrency } from '../common/batch-map.util';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { logActivity } from './activity-log.util';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 
@@ -55,29 +54,10 @@ export class AdminSubscriptionsService {
   }
 
   /**
-   * `subscriptions` tem RLS normal (Sprint 5, decisão revista em relação ao
-   * plano original) — mesma soma por tenant já usada no Dashboard/Usuários,
-   * sem bypass de RLS novo. Paginação obrigatória (seção 8 do CLAUDE.md) —
-   * mesmo padrão em memória de AdminUsersService, já que não dá pra paginar
-   * no banco uma leitura que já é feita por tenant.
-   */
-  async list(query: PaginationQueryDto) {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-
-    const perTenant = await this.getPerTenantSubscriptions();
-
-    const total = perTenant.length;
-    const start = (page - 1) * pageSize;
-
-    return { items: perTenant.slice(start, start + pageSize), total, page, pageSize };
-  }
-
-  /**
-   * MRR, trials ativos e distribuição de barbearias por plano — usado pelo
-   * Dashboard (Sprint 7, admin-desenvolvain.md) em vez do loop próprio que
-   * existia antes. Lê o MESMO cache de `list()`, nunca bate no banco de novo
-   * só por causa do Dashboard.
+   * MRR, trials ativos, distribuição de barbearias por plano e contagem por status —
+   * usado pelo Dashboard (Sprint 7) e pela tela Assinaturas (Sprint 9, admin-desenvolvain.md),
+   * que deixou de listar as barbearias uma a uma pra só pedir esse resumo. Lê o MESMO cache
+   * que `list()` usava, nunca bate no banco de novo só por causa de quem está chamando.
    */
   async getOverview() {
     const perTenant = await this.getPerTenantSubscriptions();
@@ -99,7 +79,18 @@ export class AdminSubscriptionsService {
       else byPlan.set(code, { planCode: code, planName: name, count: 1 });
     }
 
-    return { mrrCents, trialsAtivos, tenantsByPlan: Array.from(byPlan.values()) };
+    const activeCount = active.length;
+    const cancelledCount = perTenant.filter((t) => t.subscription?.status === 'cancelled').length;
+    const noneCount = perTenant.filter((t) => !t.subscription).length;
+
+    return {
+      mrrCents,
+      trialsAtivos,
+      tenantsByPlan: Array.from(byPlan.values()),
+      activeCount,
+      cancelledCount,
+      noneCount,
+    };
   }
 
   private async assertTenantExists(tenantId: string) {

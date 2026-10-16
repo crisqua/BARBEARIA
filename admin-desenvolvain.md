@@ -59,8 +59,8 @@ compartilhado, não Context — funciona porque todo componente do arquivo lê `
 | `Payout` (Repasse) | Sim | **Normal** | ✅ Sprint 6 |
 | `PlatformSettings` | Não | Isenta (singleton global) | ✅ feature extra |
 | `PlatformActivity` | Sim | **Normal** | ✅ feature extra |
-| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 10 |
-| `Release` | Não | Isenta (planejado) | ⏳ Sprint 11 (parcial) |
+| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 11 |
+| `Release` | Não | Isenta (planejado) | ⏳ Sprint 12 (parcial) |
 
 ### Mudança de decisão registrada durante a execução (Sprint 5)
 
@@ -146,7 +146,7 @@ dessincronizar): `tenant_created`/`tenant_suspended`/`tenant_reactivated` (`Admi
 Helper único (`activity-log.util.ts`) grava e formata os valores em R$ pt-BR. Leitura cross-tenant
 soma por tenant via `TenantContextService`, mesmo padrão do resto do painel. **Ficam de fora de
 propósito:** "Trial expirado" e "Suporte aberto" — nenhum dos dois tem regra de negócio ou módulo
-implementado ainda (cron de expiração e `SupportTicket` do Sprint 10, respectivamente).
+implementado ainda (cron de expiração e `SupportTicket` do Sprint 11, respectivamente).
 
 ### ✅ Feature extra (fora da sequência) — Validação obrigatória no Onboarding
 O wizard de Nova Barbearia deixava avançar de passo (via botão "Próximo" ou clicando direto numa
@@ -351,21 +351,128 @@ filtro Mês/Ano sem campo novo.
 5. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual
    no painel local.
 
-### ⏳ Sprint 9 — Impersonação ("Acessar como admin") — não iniciado
+### ⏳ Sprint 9 — Assinaturas por barbearia (drill-down, mesmo padrão da Sprint 7/8) — planejado
+
+**Motivação:** mesmo problema de `GET /v1/admin/payments` antes da Sprint 8 — `GET
+/v1/admin/subscriptions` (`admin-subscriptions.service.ts`, método `list()`) faz um loop cross-tenant
+(`mapWithConcurrency`, 1 `runInTenantContext` por barbearia) pra montar uma tabela com as 56
+barbearias de uma vez. Medido em `desempenho_barbearia.md`: 1.415ms sem cache / 2ms com cache (90s de
+TTL escondendo o problema, não resolvendo). Único consumidor é a tela `Assinaturas` — confirmado por
+grep, igual se confirmou pra Payments antes da Sprint 8.
+
+**Diferença importante em relação à Sprint 8: o back-end tenant-scoped já existe.** `GET
+/v1/admin/tenants/:tenantId/subscription` e `PATCH /v1/admin/tenants/:tenantId/subscription` (troca
+de plano e cancela/reativa, via `status`) já estão prontos em `admin-subscriptions.controller.ts` —
+não precisam de rota nova. O trabalho de back-end deste sprint é bem menor que o da Sprint 8: só
+remover o `list()` cross-tenant e adicionar um resumo leve no lugar dele.
+
+**Decisão de produto:** a tela para de listar as 56 barbearias numa tabela só e passa a ter dois
+blocos:
+1. **Resumo global, leve** — "Ativas" / "Canceladas" / "Sem assinatura" / "MRR", os 4 cards que já
+   existem hoje. Continuam cross-tenant (fazem sentido como visão geral), mas deixam de custar uma
+   consulta por barbearia: `AdminSubscriptionsService.getOverview()` (criado na Sprint 7 pro
+   Dashboard, já lê do mesmo cache de 90s que o `list()` usava) ganha 3 contagens novas
+   (`activeCount`/`cancelledCount`/`noneCount`) em cima do MESMO array já cacheado — nenhuma consulta
+   nova ao banco, só mais uns `.filter().length` em memória.
+2. **Gestão de uma barbearia por vez** — seletor de barbearia (mesmo padrão de `<Select>` de
+   Usuários/Financeiro) e, abaixo, o plano atual dela, status, data de início, um `<select>` pra trocar
+   de plano e o botão cancelar/reativar — usando os endpoints tenant-scoped que já existem.
+
+**Como vai ficar a tela (descrição, mesma linguagem visual já usada em Usuários/Financeiro — não
+precisa de protótipo novo, o padrão já está validado e no ar):**
+
+```
+Assinaturas
+Veja e altere o plano de uma barbearia
+
+┌───────────┐ ┌────────────┐ ┌─────────────────┐ ┌─────────┐
+│ ATIVAS    │ │ CANCELADAS │ │ SEM ASSINATURA   │ │ MRR     │
+│   56      │ │     0      │ │       0          │ │ R$ 0,00 │
+└───────────┘ └────────────┘ └─────────────────┘ └─────────┘
+
+                                    [ Selecione uma barbearia… ▾ ]
+
+  (sem seleção)
+  ┌─────────────────────────────────────────────────────────┐
+  │ Selecione uma barbearia acima pra ver e alterar o plano. │
+  └─────────────────────────────────────────────────────────┘
+
+  (selecionada, sem assinatura ainda — tenant criado antes da Sprint 5)
+  ┌─────────────────────────────────────────────────────────┐
+  │ Essa barbearia ainda não tem assinatura.                 │
+  │ [ Selecione um plano ▾ ]   [ Criar assinatura ]          │
+  └─────────────────────────────────────────────────────────┘
+
+  (selecionada, com assinatura)
+  ┌─────────────────────────────────────────────────────────┐
+  │ Plano atual: PRO        Status: ATIVO                    │
+  │ Assinante desde: 22 de set. de 2026                      │
+  │                                                           │
+  │ [ Trocar plano ▾ ]              [ Cancelar assinatura ]  │
+  └─────────────────────────────────────────────────────────┘
+```
+
+Os 4 cards do topo ficam sempre visíveis (não dependem da barbearia selecionada) — só a seção de
+baixo muda com o seletor, igual já acontece em Usuários e Financeiro.
+
+**Decisão confirmada (2026-10-16):** sim, entra botão "Ver assinatura desta barbearia →" — em **Usuários**
+(ao lado do já existente "Ver financeiro desta barbearia →", Sprint 8) e em **Financeiro** também.
+Mesmo mecanismo de state levantado pro `App` da Sprint 8, só que com uma chave própria
+(`assinaturasTenantId` + setter) em vez de reaproveitar `financeiroTenantId` — os três destinos
+(Financeiro, Assinaturas) são decisões de navegação independentes a partir de Usuários/Financeiro;
+uma seleção feita pensando em "ver o financeiro" não deveria pré-popular "ver a assinatura" de um
+jeito que o usuário não pediu.
+
+**Arquivos — Backend:**
+
+| Arquivo | Mudança |
+|---|---|
+| `admin-subscriptions.service.ts` | `getOverview()` ganha `activeCount`/`cancelledCount`/`noneCount` (mesmo array já cacheado); método `list()` removido (sem consumidor depois da mudança) |
+| `admin-subscriptions.controller.ts` | Rota `GET admin/subscriptions` removida; rota nova `GET admin/subscriptions/overview` chamando `getOverview()` |
+| `test/admin/admin-subscriptions.e2e-spec.ts` | Teste da linha ~109 ("lista cross-tenant paginada") trocado por teste do `/overview` (contagens corretas); RBAC do endpoint novo |
+| `admin-dashboard.service.ts` | Sem mudança — já chama `getOverview()` internamente, os campos novos só passam a existir no retorno do método, Dashboard ignora o que não usa |
+| `scripts/benchmark/bench.mjs` | Linha de `GET /v1/admin/subscriptions` trocada por `GET /v1/admin/subscriptions/overview` |
+
+Sem migration — nenhum campo novo de schema, só contagem em cima do que já existe.
+
+**Arquivos — Frontend:**
+
+| Arquivo | Mudança |
+|---|---|
+| `src/api/client.js` | `listSubscriptions` sai; entram `getSubscriptionsOverview()` e `getTenantSubscription(tenantId)` (esse último faltava — só existia `updateTenantSubscription`) |
+| `App` (componente raiz) | State novo `assinaturasTenantId` + setter, passado pra `Usuarios`, `Financeiro` e `Assinaturas` |
+| `Usuarios` | Botão "Ver assinatura desta barbearia →" (ao lado do "Ver financeiro…" da Sprint 8) |
+| `Financeiro` | Botão "Ver assinatura desta barbearia →" novo |
+| `Assinaturas` | Reescrita: 4 cards do resumo (via `getSubscriptionsOverview`) + seletor de barbearia (pré-preenchido quando vem de Usuários/Financeiro) + painel de uma barbearia (via `getTenantSubscription`/`updateTenantSubscription`, já existente) |
+
+**Plano de implementação, em fases (ordem de execução):**
+
+1. **Resumo cross-tenant mais barato** (backend) — `getOverview()` ganha as 3 contagens novas; rota
+   `GET admin/subscriptions/overview`; ajusta e adiciona testes.
+2. **Remove o `list()` cross-tenant** (backend) — remove método, rota e o teste antigo que dependia
+   dele; atualiza benchmark.
+3. **Cliente de API + state compartilhado** (frontend) — `getSubscriptionsOverview`,
+   `getTenantSubscription` em `client.js`; state `assinaturasTenantId` levantado pro `App`.
+4. **Assinaturas (frontend), reescrita completa** — cards + seletor + painel de uma barbearia.
+5. **Botões em Usuários e Financeiro** — "Ver assinatura desta barbearia →" setando o state
+   compartilhado antes de navegar, mesmo padrão do botão de Financeiro da Sprint 8.
+6. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual.
+
+### ⏳ Sprint 10 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
 
-### ⏳ Sprint 10 — Suporte — não iniciado
+### ⏳ Sprint 11 — Suporte — não iniciado
 `SupportTicket` com RLS normal. Spike técnico necessário: leitura cross-tenant sob RLS normal (mesmo
 padrão de soma por tenant já usado em todo o resto — não deveria precisar de `BYPASSRLS` dedicado
 como o plano original cogitava, já que o mesmo mecanismo de `TenantContextService` resolve isso desde
 o Sprint 2).
 
-### ⏳ Sprint 11 — Releases — parcialmente feito
+### ⏳ Sprint 12 — Releases — parcialmente feito
 Configurações já está pronta (ver acima). Falta só `Release` (changelog, leitura manual, inserido
 pelos devs a cada deploy).
 
-### ⏳ Sprint 12 — Deploy — não iniciado
+### ⏳ Sprint 13 — Deploy — não iniciado
 Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
 
@@ -394,7 +501,7 @@ pelo uso manual do painel — colisão de dado de ambiente, não bug).
   do protótipo visual original (que tinha telas de loja/comissão/financeiro avançado), implementada
   no Sprint 6 sem confrontar contra o modelo de negócio real na hora. **Decisão do usuário: deixar
   como está por enquanto**, só registrado — não remover nem corrigir até decisão futura.
-- **Impersonação (Sprint 9):** ainda não implementada — maior risco de segurança do que falta
+- **Impersonação (Sprint 10):** ainda não implementada — maior risco de segurança do que falta
   construir, não pular a revisão dedicada quando chegar a vez.
 - **Financeiro cross-tenant (`GET /v1/admin/payments`):** decidido remover na Sprint 8 (não manter) —
   ver seção 6, Sprint 8, lista de arquivos afetados pela remoção (controller, service, teste,

@@ -10,10 +10,11 @@ import {
   getTenant,
   getTenantPayments,
   getTenantStats,
+  getTenantSubscription,
+  getSubscriptionsOverview,
   getUsers,
   listPayouts,
   listPlans,
-  listSubscriptions,
   listTenants,
   login as apiLogin,
   logout as apiLogout,
@@ -120,7 +121,7 @@ const Stat = ({ label, value, sub, trend, accent }) => {
   );
 };
 
-const Btn = ({ children, onClick, variant = "primary", size = "md" }) => {
+const Btn = ({ children, onClick, variant = "primary", size = "md", disabled = false }) => {
   const pad = size === "sm" ? "6px 14px" : "10px 20px";
   const fs = size === "sm" ? 12 : 13;
   const styles = {
@@ -129,9 +130,10 @@ const Btn = ({ children, onClick, variant = "primary", size = "md" }) => {
     danger:  { background: T.danger + "18", color: T.danger, border: `1px solid ${T.danger}44` },
   };
   return (
-    <div onClick={onClick} style={{
+    <div onClick={disabled ? undefined : onClick} style={{
       ...styles[variant], padding: pad, borderRadius: 8, fontSize: fs,
-      fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+      fontWeight: 700, cursor: disabled ? "default" : "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+      opacity: disabled ? 0.6 : 1,
     }}>{children}</div>
   );
 };
@@ -155,15 +157,15 @@ const Input = ({ label, value, onChange, placeholder, type = "text", error }) =>
   </div>
 );
 
-const Select = ({ label, value, onChange, options, error }) => (
+const Select = ({ label, value, onChange, options, error, disabled = false }) => (
   <div>
     {label && (
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         {label}{error && <span style={{ color: T.danger }}> *</span>}
       </div>
     )}
-    <select value={value} onChange={onChange}
-      style={{ width: "100%", background: T.surface, border: `1px solid ${error ? T.danger : T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}>
+    <select value={value} onChange={onChange} disabled={disabled}
+      style={{ width: "100%", background: T.surface, border: `1px solid ${error ? T.danger : T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit", opacity: disabled ? 0.6 : 1 }}>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
     {error && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{error}</div>}
@@ -1263,7 +1265,7 @@ function getPaymentFormErrors(form) {
   return errors;
 }
 
-const Financeiro = ({ tenantId, setTenantId }) => {
+const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }) => {
   const [tenants, setTenants] = useState([]);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1378,6 +1380,16 @@ const Financeiro = ({ tenantId, setTenantId }) => {
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : (
         <div>
+          <div style={{ marginBottom: 16 }}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              onClick={() => { setAssinaturasTenantId(tenantId); setActive("assinaturas"); }}
+            >
+              Ver assinatura desta barbearia →
+            </Btn>
+          </div>
+
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Este mês ({currentMonthLabel}) — {selectedTenant?.name}</div>
@@ -1509,7 +1521,7 @@ function buildBars(monthlyAppointments) {
 
 const USUARIOS_PAGE_SIZE = 10;
 
-const Usuarios = ({ setActive, setFinanceiroTenantId }) => {
+const Usuarios = ({ setActive, setFinanceiroTenantId, setAssinaturasTenantId }) => {
   const [tenants, setTenants] = useState([]);
   const [tenantId, setTenantId] = useState("");
   const [stats, setStats] = useState(null);
@@ -1588,13 +1600,20 @@ const Usuarios = ({ setActive, setFinanceiroTenantId }) => {
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : (
         <div>
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Btn
               variant="ghost"
               size="sm"
               onClick={() => { setFinanceiroTenantId(tenantId); setActive("financeiro"); }}
             >
               Ver financeiro desta barbearia →
+            </Btn>
+            <Btn
+              variant="ghost"
+              size="sm"
+              onClick={() => { setAssinaturasTenantId(tenantId); setActive("assinaturas"); }}
+            >
+              Ver assinatura desta barbearia →
             </Btn>
           </div>
 
@@ -1785,121 +1804,143 @@ const Releases = () => {
 };
 
 // ────────────────────────────────────────────────────────
-// TELA: ASSINATURAS
+// TELA: ASSINATURAS (por barbearia — Sprint 9, admin-desenvolvain.md)
 // ────────────────────────────────────────────────────────
-const Assinaturas = () => {
-  const [items, setItems] = useState([]);
+const Assinaturas = ({ tenantId, setTenantId }) => {
+  const [tenants, setTenants] = useState([]);
   const [planos, setPlanos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [actingId, setActingId] = useState(null);
+  const [overview, setOverview] = useState(null);
+  // undefined = ainda não buscou pra esse tenantId | null = buscou, confirmado sem assinatura (404) |
+  // objeto = assinatura carregada. Mesmo padrão de `stats` em Usuários — nunca uma flag "loading"
+  // separada, que já causou um bug real de corrida de render nessa mesma tela de admin.
+  const [subscription, setSubscription] = useState(undefined);
+  const [error, setError] = useState("");
+  const [novoPlanoId, setNovoPlanoId] = useState("");
+  const [acting, setActing] = useState(false);
 
-  const load = () =>
-    Promise.all([listSubscriptions(), listPlans()]).then(([subsRes, plansRes]) => {
-      setItems(subsRes.items);
+  useEffect(() => {
+    Promise.all([listTenants(), listPlans(), getSubscriptionsOverview()]).then(([tenantsRes, plansRes, overviewRes]) => {
+      setTenants(tenantsRes.items);
       setPlanos(plansRes.items.filter((p) => p.active));
+      setOverview(overviewRes);
     });
+  }, []);
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  const reloadOverview = () => getSubscriptionsOverview().then(setOverview);
 
-  const trocarPlano = async (tenantId, planId) => {
-    setActingId(tenantId);
+  useEffect(() => {
+    setSubscription(undefined);
+    setError("");
+    setNovoPlanoId("");
+    if (!tenantId) return;
+    getTenantSubscription(tenantId)
+      .then((sub) => setSubscription(sub))
+      .catch((err) => {
+        if (err.status === 404) setSubscription(null);
+        else setError(err.message || "Não foi possível carregar a assinatura dessa barbearia.");
+      });
+  }, [tenantId]);
+
+  const selectedTenant = tenants.find((t) => t.id === tenantId);
+
+  const criarAssinatura = async () => {
+    if (!novoPlanoId) return;
+    setActing(true);
     try {
-      await updateTenantSubscription(tenantId, { planId });
-      await load();
+      const sub = await updateTenantSubscription(tenantId, { planId: novoPlanoId });
+      setSubscription(sub);
+      await reloadOverview();
     } finally {
-      setActingId(null);
+      setActing(false);
     }
   };
 
-  const toggleStatus = async (tenantId, statusAtual) => {
-    setActingId(tenantId);
+  const trocarPlano = async (planId) => {
+    setActing(true);
     try {
-      await updateTenantSubscription(tenantId, { status: statusAtual === "active" ? "cancelled" : "active" });
-      await load();
+      const sub = await updateTenantSubscription(tenantId, { planId });
+      setSubscription(sub);
+      await reloadOverview();
     } finally {
-      setActingId(null);
+      setActing(false);
     }
   };
 
-  const comAssinatura = items.filter((i) => i.subscription).length;
-  const ativas = items.filter((i) => i.subscription?.status === "active").length;
-  const canceladas = items.filter((i) => i.subscription?.status === "cancelled").length;
-  const semAssinatura = items.length - comAssinatura;
+  const toggleStatus = async () => {
+    setActing(true);
+    try {
+      const sub = await updateTenantSubscription(tenantId, { status: subscription.status === "active" ? "cancelled" : "active" });
+      setSubscription(sub);
+      await reloadOverview();
+    } finally {
+      setActing(false);
+    }
+  };
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Assinaturas</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Qual plano cada barbearia está usando</div>
-      </div>
-      <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-        <Stat label="Ativas" value={String(ativas)} />
-        <Stat label="Canceladas" value={String(canceladas)} accent={T.danger} />
-        <Stat label="Sem assinatura" value={String(semAssinatura)} sub="tenants antigos, pré-Sprint 5" accent={T.warning} />
-        <Stat label="MRR" value="—" sub="chega no Sprint 6" />
-      </div>
-      {loading ? (
-        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
-      ) : (
-        <Table
-          cols={["Barbearia", "Plano", "Desde", "Status", ""]}
-          rows={items.map((i, idx) => {
-            const acting = actingId === i.tenant.id;
-            return (
-              <TRow key={i.tenant.id} last={idx === items.length - 1} cells={[
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Avatar name={i.tenant.name} size={28} />
-                  <span style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{i.tenant.name}</span>
-                </div>,
-                <select
-                  value={i.subscription?.planId || ""}
-                  disabled={acting}
-                  onChange={(e) => trocarPlano(i.tenant.id, e.target.value)}
-                  style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 12, outline: "none" }}
-                >
-                  {!i.subscription && <option value="">— sem plano —</option>}
-                  {planos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>,
-                <span style={{ fontSize: 13, color: T.muted }}>{i.subscription ? formatDate(i.subscription.startedAt) : "—"}</span>,
-                i.subscription ? <Badge color={i.subscription.status === "active" ? T.success : T.danger}>{i.subscription.status === "active" ? "ativo" : "cancelado"}</Badge> : <Badge color={T.warning}>sem assinatura</Badge>,
-                i.subscription ? (
-                  <span onClick={acting ? undefined : () => toggleStatus(i.tenant.id, i.subscription.status)} style={{ fontSize: 12, color: i.subscription.status === "active" ? T.danger : T.lime, cursor: acting ? "default" : "pointer" }}>
-                    {i.subscription.status === "active" ? "Cancelar" : "Reativar"}
-                  </span>
-                ) : null,
-              ]} />
-            );
-          })}
-          mobileRows={items.map((i) => {
-            const acting = actingId === i.tenant.id;
-            return (
-              <MobileCard key={i.tenant.id}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Avatar name={i.tenant.name} size={28} />
-                  <span style={{ fontSize: 13, color: T.text, fontWeight: 600, flex: 1 }}>{i.tenant.name}</span>
-                  {i.subscription ? <Badge color={i.subscription.status === "active" ? T.success : T.danger}>{i.subscription.status === "active" ? "ativo" : "cancelado"}</Badge> : <Badge color={T.warning}>sem assinatura</Badge>}
-                </div>
-                <select
-                  value={i.subscription?.planId || ""}
-                  disabled={acting}
-                  onChange={(e) => trocarPlano(i.tenant.id, e.target.value)}
-                  style={{ width: "100%", boxSizing: "border-box", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, padding: "7px 8px", color: T.text, fontSize: 12, outline: "none" }}
-                >
-                  {!i.subscription && <option value="">— sem plano —</option>}
-                  {planos.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: T.muted }}>{i.subscription ? `desde ${formatDate(i.subscription.startedAt)}` : "—"}</span>
-                  {i.subscription && (
-                    <span onClick={acting ? undefined : () => toggleStatus(i.tenant.id, i.subscription.status)} style={{ fontSize: 12, color: i.subscription.status === "active" ? T.danger : T.lime, cursor: acting ? "default" : "pointer" }}>
-                      {i.subscription.status === "active" ? "Cancelar" : "Reativar"}
-                    </span>
-                  )}
-                </div>
-              </MobileCard>
-            );
-          })}
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Assinaturas</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Veja e altere o plano de uma barbearia</div>
+        </div>
+        <Select
+          value={tenantId ?? ""}
+          onChange={(e) => setTenantId(e.target.value)}
+          options={[{ value: "", label: "Selecione uma barbearia…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]}
         />
+      </div>
+
+      <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
+        <Stat label="Ativas" value={overview ? String(overview.activeCount) : "…"} />
+        <Stat label="Canceladas" value={overview ? String(overview.cancelledCount) : "…"} accent={T.danger} />
+        <Stat label="Sem assinatura" value={overview ? String(overview.noneCount) : "…"} accent={T.warning} />
+        <Stat label="MRR" value={overview ? formatMoney(overview.mrrCents) : "…"} />
+      </div>
+
+      {!tenantId ? (
+        <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 12, padding: 60, textAlign: "center", color: T.muted, fontSize: 13 }}>
+          Selecione uma barbearia acima pra ver e alterar o plano dela.
+        </div>
+      ) : error ? (
+        <ErrorBox>{error}</ErrorBox>
+      ) : subscription === undefined ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : subscription === null ? (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 13, color: T.text, marginBottom: 14 }}>
+            <strong>{selectedTenant?.name}</strong> ainda não tem assinatura.
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Select label="Plano" value={novoPlanoId} onChange={(e) => setNovoPlanoId(e.target.value)}
+              options={[{ value: "", label: "Selecione…" }, ...planos.map((p) => ({ value: p.id, label: p.name }))]} />
+            <Btn size="sm" onClick={criarAssinatura} disabled={!novoPlanoId || acting}>{acting ? "Criando..." : "Criar assinatura"}</Btn>
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 18 }}>
+            <div>
+              <div style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Plano atual</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{subscription.plan.name}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Status</div>
+              <Badge color={subscription.status === "active" ? T.success : T.danger}>{subscription.status === "active" ? "ativo" : "cancelado"}</Badge>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Assinante desde</div>
+              <div style={{ fontSize: 13, color: T.text }}>{formatDate(subscription.startedAt)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Select label="Trocar plano" value={subscription.planId} disabled={acting} onChange={(e) => trocarPlano(e.target.value)}
+              options={planos.map((p) => ({ value: p.id, label: p.name }))} />
+            <Btn size="sm" variant={subscription.status === "active" ? "danger" : "primary"} onClick={toggleStatus} disabled={acting}>
+              {acting ? "Salvando..." : subscription.status === "active" ? "Cancelar assinatura" : "Reativar assinatura"}
+            </Btn>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -2176,9 +2217,12 @@ export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("dashboard");
-  // Barbearia selecionada ao navegar de Usuários pra Financeiro (Sprint 8, admin-desenvolvain.md) —
-  // state levantado aqui porque os dois componentes são irmãos, sem relação pai/filho direta.
+  // Barbearia selecionada ao navegar de Usuários/Financeiro pra outra tela (Sprint 8/9,
+  // admin-desenvolvain.md) — state levantado aqui porque os componentes são irmãos, sem relação
+  // pai/filho direta. Uma chave por destino (não uma só compartilhada) de propósito: escolher uma
+  // barbearia pensando em "ver o financeiro" não deveria pré-popular "ver a assinatura" sozinho.
   const [financeiroTenantId, setFinanceiroTenantId] = useState(null);
+  const [assinaturasTenantId, setAssinaturasTenantId] = useState(null);
   const [, setThemeTick] = useState(0); // força re-render depois de applyTheme mutar T
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2246,10 +2290,10 @@ export default function App() {
     if (page === "barbearias")  return <Barbearias />;
     if (page === "onboarding")  return <Onboarding setActive={setPage} />;
     if (page === "planos")      return <Planos />;
-    if (page === "assinaturas") return <Assinaturas />;
-    if (page === "financeiro")  return <Financeiro tenantId={financeiroTenantId} setTenantId={setFinanceiroTenantId} />;
+    if (page === "assinaturas") return <Assinaturas tenantId={assinaturasTenantId} setTenantId={setAssinaturasTenantId} />;
+    if (page === "financeiro")  return <Financeiro tenantId={financeiroTenantId} setTenantId={setFinanceiroTenantId} setActive={setPage} setAssinaturasTenantId={setAssinaturasTenantId} />;
     if (page === "repasses")    return <Repasses />;
-    if (page === "usuarios")    return <Usuarios setActive={setPage} setFinanceiroTenantId={setFinanceiroTenantId} />;
+    if (page === "usuarios")    return <Usuarios setActive={setPage} setFinanceiroTenantId={setFinanceiroTenantId} setAssinaturasTenantId={setAssinaturasTenantId} />;
     if (page === "suporte")     return <Suporte />;
     if (page === "releases")    return <Releases />;
     if (page === "config")      return <Config onThemeChange={handleThemeChange} />;

@@ -1,8 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { AdminSubscriptionsService } from './admin-subscriptions.service';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 
@@ -17,9 +16,9 @@ import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 export class AdminSubscriptionsController {
   constructor(private readonly adminSubscriptionsService: AdminSubscriptionsService) {}
 
-  @Get('admin/subscriptions')
-  list(@Query() query: PaginationQueryDto) {
-    return this.adminSubscriptionsService.list(query);
+  @Get('admin/subscriptions/overview')
+  overview() {
+    return this.adminSubscriptionsService.getOverview();
   }
 
   @Get('admin/tenants/:tenantId/subscription')

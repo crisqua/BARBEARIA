@@ -102,11 +102,10 @@ export const createPlan = (data) => apiFetch("/v1/admin/plans", { method: "POST"
 
 export const updatePlan = (id, data) => apiFetch(`/v1/admin/plans/${id}`, { method: "PATCH", body: data });
 
-// ─── Assinaturas ─────────────────────────────────────────
-export const listSubscriptions = (params = {}) => {
-  const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
-  return apiFetch(`/v1/admin/subscriptions?${query}`);
-};
+// ─── Assinaturas (por barbearia — Sprint 9, admin-desenvolvain.md) ──────
+export const getSubscriptionsOverview = () => apiFetch("/v1/admin/subscriptions/overview");
+
+export const getTenantSubscription = (tenantId) => apiFetch(`/v1/admin/tenants/${tenantId}/subscription`);
 
 export const updateTenantSubscription = (tenantId, data) =>
   apiFetch(`/v1/admin/tenants/${tenantId}/subscription`, { method: "PATCH", body: data });

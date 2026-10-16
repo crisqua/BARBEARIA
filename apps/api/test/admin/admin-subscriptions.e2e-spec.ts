@@ -11,7 +11,7 @@ import {
   seedTenantWithUser,
 } from '../utils/seed-auth-fixtures';
 
-describe('Assinaturas do Super Admin (/v1/admin/tenants/:id/subscription, /v1/admin/subscriptions)', () => {
+describe('Assinaturas do Super Admin (/v1/admin/tenants/:id/subscription, /v1/admin/subscriptions/overview)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantContext: TenantContextService;
@@ -106,16 +106,40 @@ describe('Assinaturas do Super Admin (/v1/admin/tenants/:id/subscription, /v1/ad
     expect(get.body.plan).toMatchObject({ id: planB, name: 'Plano B' });
   });
 
-  it('lista cross-tenant paginada inclui o tenant e a assinatura dele', async () => {
+  it('admin de barbearia não acessa o resumo de assinaturas', async () => {
     const res = await request(app.getHttpServer())
-      .get('/v1/admin/subscriptions')
-      .query({ pageSize: 100 })
-      .set('Authorization', `Bearer ${superAdminToken}`);
+      .get('/v1/admin/subscriptions/overview')
+      .set('Authorization', `Bearer ${regularAdminToken}`);
+    expect(res.status).toBe(403);
+  });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ page: 1, pageSize: 100, total: expect.any(Number) });
-    const entry = res.body.items.find((i: { tenant: { id: string } }) => i.tenant.id === seededTenant.tenantId);
-    expect(entry.subscription).toMatchObject({ planId: planB, status: 'cancelled' });
+  it('resumo (/overview) tem o formato esperado e reflete mudança de status em delta', async () => {
+    const before = await request(app.getHttpServer())
+      .get('/v1/admin/subscriptions/overview')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(before.status).toBe(200);
+    expect(before.body).toMatchObject({
+      mrrCents: expect.any(Number),
+      trialsAtivos: expect.any(Number),
+      tenantsByPlan: expect.any(Array),
+      activeCount: expect.any(Number),
+      cancelledCount: expect.any(Number),
+      noneCount: expect.any(Number),
+    });
+    // seededTenant está "cancelled" neste ponto da suíte (teste anterior) — reativa e confere
+    // em DELTA contra o resumo anterior, não em valor absoluto: o banco de teste é compartilhado
+    // com outras fixtures (ver admin-desenvolvain.md, risco operacional registrado), então só a
+    // variação causada por ESSA ação é confiável de afirmar.
+    await request(app.getHttpServer())
+      .patch(`/v1/admin/tenants/${seededTenant.tenantId}/subscription`)
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ status: 'active' });
+
+    const after = await request(app.getHttpServer())
+      .get('/v1/admin/subscriptions/overview')
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(after.body.activeCount).toBe(before.body.activeCount + 1);
+    expect(after.body.cancelledCount).toBe(before.body.cancelledCount - 1);
   });
 
   it('rejeita plano inexistente', async () => {

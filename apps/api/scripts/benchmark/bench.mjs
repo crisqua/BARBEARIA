@@ -239,7 +239,7 @@ await measure('GET /v1/admin/plans/:id', 'Detalhe de plano', N, () => ({ method:
 await measure('PATCH /v1/admin/plans/:id', 'Edita plano', N, (i) => ({ method: 'PATCH', path: `/v1/admin/plans/${pro.id}`, opts: { token: sa, body: { limitLabel: `até ${i} barbeiros` } } }));
 const hasEnt = psql(`select count(*) from plans where code='enterprise'`) !== '0';
 if (!hasEnt) await measure('POST /v1/admin/plans', 'Cria plano', 1, () => ({ method: 'POST', path: '/v1/admin/plans', opts: { token: sa, body: { code: 'enterprise', name: 'Enterprise', priceCents: 49900 } } }));
-await measure('GET /v1/admin/subscriptions', 'Assinaturas de todos os tenants', N, () => ({ method: 'GET', path: '/v1/admin/subscriptions', opts: T(sa) }));
+await measure('GET /v1/admin/subscriptions/overview', 'Resumo de assinaturas (Sprint 9 - endpoint cross-tenant /subscriptions removido)', N, () => ({ method: 'GET', path: '/v1/admin/subscriptions/overview', opts: T(sa) }));
 await measure('GET /v1/admin/tenants/:id/subscription', 'Assinatura de um tenant', N, () => ({ method: 'GET', path: `/v1/admin/tenants/${tenantB}/subscription`, opts: T(sa) }));
 await measure('PATCH /v1/admin/tenants/:id/subscription', 'Troca plano do tenant', N, (i) => ({ method: 'PATCH', path: `/v1/admin/tenants/${tenantB}/subscription`, opts: { token: sa, body: { planId: i % 2 ? pro.id : trial.id } } }));
 await measure('GET /v1/admin/tenants/:id/payments', 'Pagamentos de um tenant (Sprint 8 — endpoint cross-tenant removido)', N, () => ({ method: 'GET', path: `/v1/admin/tenants/${tenantB}/payments`, opts: T(sa) }));
