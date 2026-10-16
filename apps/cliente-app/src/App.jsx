@@ -132,18 +132,24 @@ const Phone = ({ children, T }) => {
 
   // Celular real: ocupa a tela inteira, sem moldura decorativa nem scroll
   // preso numa caixa interna — é o app, não uma foto de protótipo dele.
+  // `position: relative` é a âncora pro menu lateral (Sprint 16, admin-desenvolvain.md):
+  // sem isso, um elemento `position: absolute` dentro de `children` se ancora no
+  // ancestral posicionado mais próximo, que pode acabar sendo a página inteira.
   if (isMobile) {
-    return <div style={{ minHeight: "100vh", background: T.bg }}>{children}</div>;
+    return <div style={{ minHeight: "100vh", background: T.bg, position: "relative" }}>{children}</div>;
   }
 
   // Desktop: mantém a moldura de celular (útil pra demo/apresentação), mas sem
   // a barra de status falsa (hora fixa e "···" sem função — só confundia).
+  // `position: relative` na moldura, pelo mesmo motivo do branch mobile acima —
+  // o menu lateral precisa ficar confinado na moldura de 375px, não na janela inteira.
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: 24, minHeight: "100vh", background: "#080A10" }}>
       <div style={{
         width: 375, background: T.bg, borderRadius: 40,
         border: `2px solid ${T.border}`, overflow: "hidden",
         boxShadow: "0 0 60px #00000080", height: "fit-content", maxHeight: "94vh", overflowY: "auto",
+        position: "relative",
       }}>
         {children}
       </div>
@@ -162,6 +168,74 @@ const BackHeader = ({ T, title, onBack }) => (
     <div onClick={onBack} style={{ fontSize: 18, color: T.gold, cursor: "pointer" }}>←</div>
     <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>{title}</div>
   </div>
+);
+
+// Menu lateral (Sprint 16, admin-desenvolvain.md) — só aberto a partir da tela Início por
+// enquanto (decisão de escopo da sprint); por isso "Início" é sempre o item marcado como
+// ativo, sem precisar receber a tela atual como prop.
+const DRAWER_ITEMS = [
+  { icon: "⌂", label: "Início", dest: "home" },
+  { icon: "+", label: "Agendar Horário", dest: "servico" },
+  { icon: "◉", label: "Profissionais", dest: "profissionais" },
+  { icon: "◈", label: "Meus Agendamentos", dest: "meus-agendamentos" },
+  { icon: "🕐", label: "Horários de Funcionamento", dest: "horarios" },
+];
+
+const Drawer = ({ T, tenant, user, open, onClose, onNavigate, onLogout }) => (
+  <>
+    <div
+      onClick={onClose}
+      style={{
+        position: "absolute", inset: 0, background: "#000000", zIndex: 30,
+        opacity: open ? 0.55 : 0, pointerEvents: open ? "auto" : "none",
+        transition: "opacity 0.22s ease",
+      }}
+    />
+    <div style={{
+      position: "absolute", top: 0, bottom: 0, left: 0, width: 272, zIndex: 40,
+      background: T.card, borderRight: `1px solid ${T.border}`,
+      transform: open ? "translateX(0)" : "translateX(-100%)",
+      transition: "transform 0.24s ease",
+      display: "flex", flexDirection: "column",
+      boxShadow: "8px 0 24px #00000066",
+    }}>
+      <div style={{ padding: "24px 20px 20px", display: "flex", alignItems: "center", gap: 12, borderBottom: `1px solid ${T.border}` }}>
+        {tenant?.logoUrl ? (
+          <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${T.gold}55` }} />
+        ) : (
+          <div style={{ fontSize: 26 }}>✂</div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: T.gold, fontWeight: 800, letterSpacing: "0.05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {tenant?.name?.toUpperCase()}
+          </div>
+          {user && <div style={{ fontSize: 10.5, color: T.muted, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>}
+        </div>
+      </div>
+      <div style={{ flex: 1, padding: "14px 10px" }}>
+        {DRAWER_ITEMS.map((item) => {
+          const active = item.dest === "home";
+          return (
+            <div
+              key={item.dest}
+              onClick={() => onNavigate(item.dest)}
+              style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                borderRadius: 10, cursor: "pointer", marginBottom: 2,
+                background: active ? T.gold + "14" : "transparent",
+              }}
+            >
+              <span style={{ fontSize: 15, width: 18, textAlign: "center", color: active ? T.gold : T.muted }}>{item.icon}</span>
+              <span style={{ fontSize: 13.5, color: active ? T.gold : T.text, fontWeight: active ? 700 : 500 }}>{item.label}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div onClick={onLogout} style={{ padding: "16px 20px 22px", borderTop: `1px solid ${T.border}`, cursor: "pointer" }}>
+        <span style={{ fontSize: 12.5, color: T.muted }}>Sair</span>
+      </div>
+    </div>
+  </>
 );
 
 const PrimaryButton = ({ T, children, onClick, disabled }) => (
@@ -300,6 +374,10 @@ export default function App() {
   const [allProfessionals, setAllProfessionals] = useState([]);
   const [serviceProfessionals, setServiceProfessionals] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  // Menu lateral (Sprint 16, admin-desenvolvain.md) — no nível do componente raiz,
+  // não dentro do bloco de uma tela só, para já deixar pronto caso o drawer seja
+  // expandido pra outras telas além da Início no futuro (decisão em aberto da sprint).
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [selectedService, setSelectedService] = useState(null);
   const [selectedPro, setSelectedPro] = useState(null);
@@ -483,36 +561,114 @@ export default function App() {
   if (screen === "register") return <RegisterScreen T={T} tenant={tenant} onRegister={handleRegister} goLogin={() => setScreen("login")} />;
 
   // ── HOME ──
-  if (screen === "home") return (
-    <Phone T={T}>
-      <div style={{ padding: "20px 24px 32px" }}>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <div onClick={handleLogout} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Sair</div>
-        </div>
-        <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
-          {tenant.logoUrl ? (
-            <img src={tenant.logoUrl} alt={tenant.name} style={{ width: 112, height: 112, borderRadius: "50%", marginBottom: 12, objectFit: "cover", border: `2px solid ${T.gold}55` }} />
-          ) : (
-            <div style={{ fontSize: 56, marginBottom: 12 }}>✂</div>
-          )}
-          <div style={{ fontSize: 22, fontWeight: 900, color: T.gold, letterSpacing: "0.08em" }}>{tenant.name?.toUpperCase()}</div>
-          {user && <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Olá, {user.name}</div>}
-        </div>
-        <div onClick={() => setScreen("servico")} style={{
-          background: T.gold, borderRadius: 12, padding: "16px 24px",
-          textAlign: "center", fontSize: 16, fontWeight: 800, color: T.bg, cursor: "pointer", marginBottom: 16,
-        }}>Agendar Horário</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 8 }}>
-          {[["Profissionais", "◉", "profissionais"], ["Meus Agendamentos", "◈", "meus-agendamentos"]].map(([l, i, dest]) => (
-            <div key={l} onClick={() => setScreen(dest)} style={{ background: T.card, borderRadius: 10, padding: 16, border: `1px solid ${T.border}`, cursor: "pointer", textAlign: "center" }}>
-              <div style={{ fontSize: 22, color: T.gold, marginBottom: 6 }}>{i}</div>
-              <div style={{ fontSize: 11, color: T.muted }}>{l}</div>
+  if (screen === "home") {
+    const now = nowInBarbershopTime();
+    const isActive = (a) =>
+      a.status === "needs_reschedule" || (a.status === "scheduled" && new Date(a.startsAt).getTime() >= now);
+    const proximo = appointments
+      .filter(isActive)
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+    const historicoPrevia = appointments
+      .filter((a) => !isActive(a))
+      .sort((a, b) => new Date(b.startsAt) - new Date(a.startsAt))
+      .slice(0, 3);
+
+    const label = (a) => {
+      const svc = services.find((s) => s.id === a.serviceId);
+      const pro = allProfessionals.find((p) => p.id === a.professionalId);
+      return { servico: svc?.name || "Serviço", profissional: pro?.name || "Profissional", preco: svc ? formatPrice(svc.priceCents) : "" };
+    };
+
+    return (
+      <Phone T={T}>
+        <div style={{ padding: "18px 24px 32px" }}>
+          {/* Header compacto — substitui o bloco de logo grande + "Sair" solto */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+            <div onClick={() => setMenuOpen(true)} style={{ cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, width: 22, padding: 4, flexShrink: 0 }}>
+              <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
+              <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
+              <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
             </div>
-          ))}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: T.gold, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tenant.name}</div>
+              {user && <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginTop: 1 }}>Olá, {user.name}</div>}
+            </div>
+            <Avatar name={user?.name || "Cliente"} size={34} T={T} />
+          </div>
+
+          {/* Próximo agendamento, em destaque */}
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Próximo agendamento</div>
+          {proximo ? (
+            <div style={{ background: `linear-gradient(135deg, ${T.gold}18, ${T.gold}08)`, border: `1.5px solid ${T.gold}55`, borderRadius: 14, padding: 18, marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{label(proximo).servico}</div>
+                  <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>com {label(proximo).profissional}</div>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: T.gold }}>{label(proximo).preco}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 12, borderTop: `1px solid ${T.gold}33` }}>
+                <span style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{formatSlotDate(proximo.startsAt)}</span>
+                <span style={{ color: T.muted }}>·</span>
+                <span style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{formatSlotTime(proximo.startsAt)}</span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontSize: 12.5, color: T.muted }}>Nenhum agendamento futuro.</div>
+            </div>
+          )}
+
+          {/* Agendar horário: continua acessível, mas não é mais o elemento dominante */}
+          <div onClick={() => setScreen("servico")} style={{
+            textAlign: "center", border: `1.5px solid ${T.gold}`, borderRadius: 10, padding: 12,
+            fontSize: 13, fontWeight: 700, color: T.gold, cursor: "pointer", marginBottom: 28,
+          }}>+ Agendar novo horário</div>
+
+          {/* Histórico, prévia — "Ver tudo" leva pra tela completa de sempre */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Histórico</div>
+            <div onClick={() => setScreen("meus-historicos")} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Ver tudo</div>
+          </div>
+          {historicoPrevia.length > 0 ? (
+            historicoPrevia.map((a) => {
+              const cancelled = a.status === "cancelled";
+              const accent = cancelled ? "#F5A623" : "#4ADE80";
+              return (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0", borderBottom: `1px solid ${T.border}` }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: accent + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: accent, flexShrink: 0 }}>
+                    {cancelled ? "×" : "✓"}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, color: T.text, fontWeight: 600 }}>{label(a).servico}</div>
+                    <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>{label(a).profissional} · {formatSlotDate(a.startsAt)}</div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{label(a).preco}</div>
+                    <div style={{ fontSize: 10.5, color: accent, fontWeight: 700, marginTop: 2, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      {cancelled ? "cancelado" : "concluído"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "12px 0" }}>Nenhum histórico ainda.</div>
+          )}
         </div>
-      </div>
-    </Phone>
-  );
+
+        <Drawer
+          T={T}
+          tenant={tenant}
+          user={user}
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          onNavigate={(dest) => { setScreen(dest); setMenuOpen(false); }}
+          onLogout={handleLogout}
+        />
+      </Phone>
+    );
+  }
 
   // ── HORÁRIOS DE FUNCIONAMENTO (código mantido, fora da navegação) ──
   if (screen === "horarios") return (
