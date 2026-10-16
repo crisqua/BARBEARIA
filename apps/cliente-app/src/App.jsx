@@ -127,8 +127,15 @@ function useIsMobile(breakpoint = 640) {
   return isMobile;
 }
 
-const Phone = ({ children, T }) => {
+// Drawer centralizado aqui (Sprint 17, admin-desenvolvain.md) — Phone já embrulha toda tela
+// do app, então é o lugar certo pra renderizar o menu lateral uma vez só, em vez de cada tela
+// repetir a mesma renderização. Só aparece quando os props do drawer existem (`onNavigate`
+// como sentinela) — login/register não os passam, então não renderizam nada a mais.
+const Phone = ({ children, T, tenant, user, menuOpen, onCloseMenu, onNavigate, onLogout, currentScreen }) => {
   const isMobile = useIsMobile();
+  const drawer = onNavigate ? (
+    <Drawer T={T} tenant={tenant} user={user} open={menuOpen} onClose={onCloseMenu} onNavigate={onNavigate} onLogout={onLogout} currentScreen={currentScreen} />
+  ) : null;
 
   // Celular real: ocupa a tela inteira, sem moldura decorativa nem scroll
   // preso numa caixa interna — é o app, não uma foto de protótipo dele.
@@ -136,7 +143,7 @@ const Phone = ({ children, T }) => {
   // sem isso, um elemento `position: absolute` dentro de `children` se ancora no
   // ancestral posicionado mais próximo, que pode acabar sendo a página inteira.
   if (isMobile) {
-    return <div style={{ minHeight: "100vh", background: T.bg, position: "relative" }}>{children}</div>;
+    return <div style={{ minHeight: "100vh", background: T.bg, position: "relative" }}>{children}{drawer}</div>;
   }
 
   // Desktop: mantém a moldura de celular (útil pra demo/apresentação), mas sem
@@ -152,6 +159,7 @@ const Phone = ({ children, T }) => {
         position: "relative",
       }}>
         {children}
+        {drawer}
       </div>
     </div>
   );
@@ -163,16 +171,28 @@ const ErrorBox = ({ children, T }) => (
   </div>
 );
 
-const BackHeader = ({ T, title, onBack }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-    <div onClick={onBack} style={{ fontSize: 18, color: T.gold, cursor: "pointer" }}>←</div>
-    <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>{title}</div>
+// Ícone de hambúrguer isolado (Sprint 17, admin-desenvolvain.md) — usado dentro de BackHeader,
+// do header próprio da Início, e sozinho nas telas sem BackHeader (confirmacao, plano-confirmado).
+const HamburgerButton = ({ T, onClick }) => (
+  <div onClick={onClick} style={{ cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, width: 20, padding: 4, flexShrink: 0 }}>
+    <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
+    <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
+    <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
   </div>
 );
 
-// Menu lateral (Sprint 16, admin-desenvolvain.md) — só aberto a partir da tela Início por
-// enquanto (decisão de escopo da sprint); por isso "Início" é sempre o item marcado como
-// ativo, sem precisar receber a tela atual como prop.
+// `onMenu` opcional — quando presente, mostra o hambúrguer à direita do título, abrindo o
+// mesmo Drawer que a Início já usa. Ausente, continua igual a antes (só seta + título).
+const BackHeader = ({ T, title, onBack, onMenu }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+    <div onClick={onBack} style={{ fontSize: 18, color: T.gold, cursor: "pointer" }}>←</div>
+    <div style={{ fontSize: 16, fontWeight: 700, color: T.text, flex: 1 }}>{title}</div>
+    {onMenu && <HamburgerButton T={T} onClick={onMenu} />}
+  </div>
+);
+
+// Menu lateral (Sprint 16/17, admin-desenvolvain.md) — Drawer centralizado dentro de `Phone`
+// (Sprint 17). O item "ativo" é calculado comparando `dest` com a tela atual, recebida via prop.
 const DRAWER_ITEMS = [
   { icon: "⌂", label: "Início", dest: "home" },
   { icon: "+", label: "Agendar Horário", dest: "servico" },
@@ -181,7 +201,7 @@ const DRAWER_ITEMS = [
   { icon: "🕐", label: "Horários de Funcionamento", dest: "horarios" },
 ];
 
-const Drawer = ({ T, tenant, user, open, onClose, onNavigate, onLogout }) => (
+const Drawer = ({ T, tenant, user, open, onClose, onNavigate, onLogout, currentScreen }) => (
   <>
     <div
       onClick={onClose}
@@ -214,7 +234,7 @@ const Drawer = ({ T, tenant, user, open, onClose, onNavigate, onLogout }) => (
       </div>
       <div style={{ flex: 1, padding: "14px 10px" }}>
         {DRAWER_ITEMS.map((item) => {
-          const active = item.dest === "home";
+          const active = item.dest === currentScreen;
           return (
             <div
               key={item.dest}
@@ -487,6 +507,15 @@ export default function App() {
     setScreen("login");
   };
 
+  // Props do drawer, prontos pra espalhar em qualquer <Phone> (Sprint 17, admin-desenvolvain.md) —
+  // evita repetir as mesmas 6 props em cada uma das telas que ganham o menu lateral.
+  const drawerProps = {
+    tenant, user, menuOpen,
+    onCloseMenu: () => setMenuOpen(false),
+    onNavigate: (dest) => { setScreen(dest); setMenuOpen(false); },
+    onLogout: handleLogout,
+  };
+
   const goHome = () => {
     setSelectedService(null);
     setSelectedPro(null);
@@ -584,15 +613,11 @@ export default function App() {
     };
 
     return (
-      <Phone T={T}>
+      <Phone T={T} {...drawerProps} currentScreen="home">
         <div style={{ padding: "18px 24px 32px" }}>
           {/* Header compacto — substitui o bloco de logo grande + "Sair" solto */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-            <div onClick={() => setMenuOpen(true)} style={{ cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, width: 22, padding: 4, flexShrink: 0 }}>
-              <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
-              <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
-              <span style={{ display: "block", height: 2, background: T.text, borderRadius: 1 }} />
-            </div>
+            <HamburgerButton T={T} onClick={() => setMenuOpen(true)} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 10, color: T.gold, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tenant.name}</div>
               {user && <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginTop: 1 }}>Olá, {user.name}</div>}
@@ -670,25 +695,15 @@ export default function App() {
             <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "12px 0" }}>Nenhum histórico ainda.</div>
           )}
         </div>
-
-        <Drawer
-          T={T}
-          tenant={tenant}
-          user={user}
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          onNavigate={(dest) => { setScreen(dest); setMenuOpen(false); }}
-          onLogout={handleLogout}
-        />
       </Phone>
     );
   }
 
   // ── HORÁRIOS DE FUNCIONAMENTO (código mantido, fora da navegação) ──
   if (screen === "horarios") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="horarios">
       <div style={{ padding: "16px 24px 32px" }}>
-        <BackHeader T={T} title="Horários de Funcionamento" onBack={() => setScreen("home")} />
+        <BackHeader T={T} title="Horários de Funcionamento" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
         <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
           {[
             ["Segunda-feira", "09:00 — 20:00"],
@@ -716,9 +731,9 @@ export default function App() {
   if (screen === "profissionais") {
     const activeProfessionals = allProfessionals.filter((p) => p.active !== false);
     return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="profissionais">
       <div style={{ padding: "16px 24px 32px" }}>
-        <BackHeader T={T} title="Nossos Profissionais" onBack={() => setScreen("home")} />
+        <BackHeader T={T} title="Nossos Profissionais" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
         {activeProfessionals.length === 0 && (
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum profissional cadastrado ainda.</div>
         )}
@@ -759,9 +774,9 @@ export default function App() {
     };
 
     return (
-      <Phone T={T}>
+      <Phone T={T} {...drawerProps} currentScreen="meus-agendamentos">
         <div style={{ padding: "16px 24px 32px" }}>
-          <BackHeader T={T} title="Meus Agendamentos" onBack={() => setScreen("home")} />
+          <BackHeader T={T} title="Meus Agendamentos" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: T.gold, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Ativos</div>
@@ -822,9 +837,9 @@ export default function App() {
     };
 
     return (
-      <Phone T={T}>
+      <Phone T={T} {...drawerProps} currentScreen="meus-historicos">
         <div style={{ padding: "16px 24px 32px" }}>
-          <BackHeader T={T} title="Meus Históricos" onBack={() => setScreen("meus-agendamentos")} />
+          <BackHeader T={T} title="Meus Históricos" onBack={() => setScreen("meus-agendamentos")} onMenu={() => setMenuOpen(true)} />
 
           {historico.length > 0 ? (
             historico.map((a) => (
@@ -858,9 +873,9 @@ export default function App() {
       { nome: "Óleo para Barba", categoria: "Barba", preco: "32,00", icon: "🛢️" },
     ];
     return (
-      <Phone T={T}>
+      <Phone T={T} {...drawerProps} currentScreen="loja">
         <div style={{ padding: "16px 24px 32px" }}>
-          <BackHeader T={T} title="Loja" onBack={() => setScreen("home")} />
+          <BackHeader T={T} title="Loja" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
           {produtos.map((p) => (
             <div key={p.nome} style={{ display: "flex", alignItems: "center", gap: 14, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14, marginBottom: 10 }}>
               <div style={{ fontSize: 22 }}>{p.icon}</div>
@@ -882,9 +897,9 @@ export default function App() {
       { id: "black", nome: "Plano Black", preco: "120", cortes: 4, beneficios: ["4 cortes por mês", "Prioridade no agendamento"] },
     ];
     return (
-      <Phone T={T}>
+      <Phone T={T} {...drawerProps} currentScreen="planos">
         <div style={{ padding: "16px 24px 32px" }}>
-          <BackHeader T={T} title="Assinar Plano" onBack={() => setScreen("home")} />
+          <BackHeader T={T} title="Assinar Plano" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
           {planos.map((p) => (
             <div key={p.id} onClick={() => { setPlanoEscolhido(p); setScreen("confirmar-plano"); }} style={{ background: T.card, border: `1.5px solid ${T.border}`, borderRadius: 12, padding: 16, cursor: "pointer" }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{p.nome}</div>
@@ -897,9 +912,9 @@ export default function App() {
   }
 
   if (screen === "confirmar-plano") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="confirmar-plano">
       <div style={{ padding: "16px 24px 32px" }}>
-        <BackHeader T={T} title="Confirmar Assinatura" onBack={() => setScreen("planos")} />
+        <BackHeader T={T} title="Confirmar Assinatura" onBack={() => setScreen("planos")} onMenu={() => setMenuOpen(true)} />
         <PrimaryButton T={T} onClick={() => {
           setAssinatura({ nome: planoEscolhido?.nome, preco: planoEscolhido?.preco, cortesTotal: planoEscolhido?.cortes, cortesRestantes: planoEscolhido?.cortes });
           setScreen("plano-confirmado");
@@ -909,8 +924,11 @@ export default function App() {
   );
 
   if (screen === "plano-confirmado") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="plano-confirmado">
       <div style={{ padding: "24px 24px 32px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <HamburgerButton T={T} onClick={() => setMenuOpen(true)} />
+        </div>
         <div style={{ textAlign: "center", padding: "28px 0" }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>Assinatura ativa!</div>
         </div>
@@ -920,9 +938,9 @@ export default function App() {
   );
 
   if (screen === "meu-plano") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="meu-plano">
       <div style={{ padding: "16px 24px 32px" }}>
-        <BackHeader T={T} title="Meu Plano" onBack={() => setScreen("home")} />
+        <BackHeader T={T} title="Meu Plano" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
         {assinatura ? (
           <div style={{ fontSize: 13, color: T.text }}>{assinatura.nome}</div>
         ) : (
@@ -934,9 +952,9 @@ export default function App() {
 
   // ── SERVIÇO ──
   if (screen === "servico") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="servico">
       <div style={{ padding: "16px 24px 32px" }}>
-        <BackHeader T={T} title="Escolha o Serviço" onBack={() => setScreen("home")} />
+        <BackHeader T={T} title="Escolha o Serviço" onBack={() => setScreen("home")} onMenu={() => setMenuOpen(true)} />
         {services.length === 0 && (
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum serviço disponível.</div>
         )}
@@ -960,9 +978,9 @@ export default function App() {
 
   // ── PROFISSIONAL ──
   if (screen === "profissional") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="profissional">
       <div style={{ padding: "16px 24px 32px" }}>
-        <BackHeader T={T} title="Escolha o Profissional" onBack={() => setScreen("servico")} />
+        <BackHeader T={T} title="Escolha o Profissional" onBack={() => setScreen("servico")} onMenu={() => setMenuOpen(true)} />
         <div style={{ fontSize: 12, color: T.muted, marginBottom: 20 }}>
           {selectedService?.name} · {selectedService && formatPrice(selectedService.priceCents)}
         </div>
@@ -990,12 +1008,13 @@ export default function App() {
   if (screen === "horario") {
     const days = nextDays();
     return (
-      <Phone T={T}>
+      <Phone T={T} {...drawerProps} currentScreen="horario">
         <div style={{ padding: "16px 24px 32px" }}>
           <BackHeader
             T={T}
             title={reschedulingAppointment ? "Novo Horário" : "Escolha o Horário"}
             onBack={() => setScreen(reschedulingAppointment ? "meus-agendamentos" : "profissional")}
+            onMenu={() => setMenuOpen(true)}
           />
           {bookingError && <ErrorBox T={T}>{bookingError}</ErrorBox>}
           <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 20, paddingBottom: 4 }}>
@@ -1044,8 +1063,11 @@ export default function App() {
 
   // ── CONFIRMAÇÃO ──
   if (screen === "confirmacao") return (
-    <Phone T={T}>
+    <Phone T={T} {...drawerProps} currentScreen="confirmacao">
       <div style={{ padding: "24px 24px 32px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <HamburgerButton T={T} onClick={() => setMenuOpen(true)} />
+        </div>
         <div style={{ textAlign: "center", padding: "28px 0 28px" }}>
           <div style={{ width: 64, height: 64, borderRadius: "50%", background: T.gold + "22", border: `2px solid ${T.gold}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 16px" }}>✓</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: T.text, marginBottom: 6 }}>

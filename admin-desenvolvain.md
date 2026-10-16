@@ -131,7 +131,7 @@ abaixo, na mesma ordem.
 | 14 | Painel Master | Changelog manual (`Release`) — Configurações da Plataforma já está pronta, falta só essa parte | ⏳ Parcialmente feito |
 | 15 | Painel Master | Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção atualizado | ⏳ Não iniciado |
 | 16 | App Cliente | Menu lateral (drawer) + histórico do cliente em primeiro plano na tela Início, reaproveitando filtros já existentes — só frontend | ✅ Concluído (16/10/2026) |
-| 17 | App Cliente | Leva o menu lateral pra **todas** as telas do app (12 ao todo — exceto login/register, que não têm sessão ainda) — centraliza o Drawer dentro do `Phone` em vez de duplicar | ⏳ Planejado |
+| 17 | App Cliente | Leva o menu lateral pra **todas** as telas do app (13 ao todo — exceto login/register/carregando, que não têm sessão ainda) — centraliza o Drawer dentro do `Phone` em vez de duplicar | ✅ Concluído (16/10/2026) |
 
 ### ✅ Sprint 1 — [Painel Master] Onboarding real + acerto de contrato
 Login funcional, Onboarding conectado (`createTenant()` real), Barbearias (lista+detalhe+suspender)
@@ -713,7 +713,7 @@ Sem mudança de backend, sem endpoint novo, sem migration — toda a informaçã
 **Em aberto, respondida pela Sprint 17 abaixo:** o menu lateral deveria aparecer só na tela Início, ou
 em todas as telas do app? Usuário pediu expandir (16/10/2026) — ver Sprint 17.
 
-### ⏳ Sprint 17 — [App Cliente] Menu lateral em todas as telas reais do MVP — planejado
+### ✅ Sprint 17 — [App Cliente] Menu lateral em todas as telas do app — concluído (16/10/2026)
 
 **Motivação:** a Sprint 16 deixou o drawer só na tela Início. Testando o app de verdade, uma vez que o
 usuário sai da Início (ex: entra em "Nossos Profissionais" ou "Meus Agendamentos"), só dá pra voltar
@@ -780,6 +780,21 @@ Sem mudança de backend, sem endpoint novo — mesma base de dado que a Sprint 1
 6. **Tela `confirmacao`** — hambúrguer isolado, já que não usa `BackHeader`.
 7. **Verificação manual** — smoke test em todas as 12 telas atualizadas, celular e desktop (mesma
    preocupação de sempre: `Phone` tem duas variantes de renderização).
+
+**Achado durante a implementação:** existe uma 13ª tela que o plano não tinha nomeado —
+`plano-confirmado` ("Assinatura ativa!"), parte da mesma família de "Confirmar Assinatura"/"Meu
+Plano" (fora do MVP), sem `BackHeader` nenhum, igual a `confirmacao`. Entrou também, pelo mesmo
+critério de "todas as telas".
+
+**Refatoração pequena, dentro do escopo:** o ícone de hambúrguer (3 traços) estava prestes a ficar
+triplicado (header próprio da Início, dentro de `BackHeader`, e agora também em `confirmacao`/
+`plano-confirmado`, que não usam `BackHeader`) — extraído pra um componente `HamburgerButton`
+compartilhado, usado nos três lugares.
+
+**Resultado final:** 13 telas com o menu lateral (as 12 planejadas + a achada no caminho). Só ficam
+de fora `LoginScreen`, `RegisterScreen` e a tela de "Carregando.../erro de tenant" (antes de existir
+sessão) — confirmado por varredura completa de todo `<Phone>` no arquivo, nenhuma tela real ficou
+pra trás.
 
 ## 7. Testes
 
