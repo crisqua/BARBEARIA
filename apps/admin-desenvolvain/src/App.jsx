@@ -1264,6 +1264,12 @@ const Financeiro = () => {
 
   useEffect(() => { load().finally(() => setLoading(false)); }, []);
 
+  // "Pagamentos pendentes" não vem mais de overview.pendingPayments (removido
+  // do Dashboard na Sprint 7, ver admin-desenvolvain.md) — calculado aqui em
+  // cima do `payments` que esta tela já busca pra montar a lista, sem
+  // precisar de nenhum campo novo nem de outra chamada ao backend.
+  const pendingPayments = payments.filter((p) => p.status === "pending").length;
+
   const abrirForm = () => { setForm(emptyPaymentForm); setError(""); setShowForm(true); };
 
   const registrar = async () => {
@@ -1308,7 +1314,7 @@ const Financeiro = () => {
         <Stat label="MRR Atual" value={overview ? formatMoney(overview.mrrCents) : "…"} />
         <Stat label="ARR Projetado" value={overview ? formatMoney(overview.mrrCents * 12) : "…"} sub="anualizado" />
         <Stat label="Trials ativos" value={overview ? String(overview.trialsAtivos) : "…"} accent={T.warning} />
-        <Stat label="Pagamentos pendentes" value={overview ? String(overview.pendingPayments) : "…"} accent={overview?.pendingPayments > 0 ? T.danger : T.success} />
+        <Stat label="Pagamentos pendentes" value={loading ? "…" : String(pendingPayments)} accent={pendingPayments > 0 ? T.danger : T.success} />
       </div>
 
       {showForm && (
