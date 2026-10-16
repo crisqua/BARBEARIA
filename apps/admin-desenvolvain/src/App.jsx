@@ -1247,6 +1247,22 @@ const emptyPaymentForm = { valorReais: "", period: "", status: "pending" };
 const MONTH_FULL = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const MONTH_OPTIONS = MONTH_FULL.map((label, i) => ({ value: String(i + 1).padStart(2, "0"), label }));
 
+/** Mesmo padrão do passo 1 do Onboarding (getStep1Errors) — valida por campo em
+ * vez de parar no primeiro erro, pra marcar todos os campos faltando de uma vez. */
+function getPaymentFormErrors(form) {
+  const errors = {};
+  if (!form.valorReais.trim()) {
+    errors.valorReais = "Obrigatório.";
+  } else {
+    const amountCents = Math.round(parseFloat(form.valorReais.replace(",", ".")) * 100);
+    if (Number.isNaN(amountCents) || amountCents <= 0) errors.valorReais = "Valor inválido.";
+  }
+  if (!form.period.trim()) errors.period = "Obrigatório.";
+  else if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) errors.period = "Formato AAAA-MM (ex: 2026-08).";
+  if (!form.status) errors.status = "Obrigatório.";
+  return errors;
+}
+
 const Financeiro = ({ tenantId, setTenantId }) => {
   const [tenants, setTenants] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -1254,6 +1270,8 @@ const Financeiro = ({ tenantId, setTenantId }) => {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyPaymentForm);
+  const [attempted, setAttempted] = useState(false);
+  const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [actingId, setActingId] = useState(null);
   const [filterMonth, setFilterMonth] = useState("");
@@ -1303,16 +1321,16 @@ const Financeiro = ({ tenantId, setTenantId }) => {
 
   const limparFiltro = () => { setFilterMonth(""); setFilterYear(""); };
 
-  const abrirForm = () => { setForm(emptyPaymentForm); setError(""); setShowForm(true); };
+  const paymentFormErrors = getPaymentFormErrors(form);
+
+  const abrirForm = () => { setForm(emptyPaymentForm); setAttempted(false); setFormError(""); setShowForm(true); };
 
   const registrar = async () => {
-    setError("");
-    if (!form.valorReais.trim()) { setError("Informe o valor do pagamento."); return; }
+    setAttempted(true);
+    setFormError("");
+    if (Object.keys(paymentFormErrors).length > 0) return;
+
     const amountCents = Math.round(parseFloat(form.valorReais.replace(",", ".")) * 100);
-    if (Number.isNaN(amountCents) || amountCents <= 0) { setError("Valor inválido."); return; }
-    if (!form.period.trim()) { setError("Informe o período do pagamento."); return; }
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(form.period)) { setError("Período deve estar no formato AAAA-MM (ex: 2026-08)."); return; }
-    if (!form.status) { setError("Selecione o status do pagamento."); return; }
 
     setSaving(true);
     try {
@@ -1320,7 +1338,7 @@ const Financeiro = ({ tenantId, setTenantId }) => {
       setShowForm(false);
       await load(tenantId);
     } catch (e) {
-      setError(e.message || "Não foi possível registrar.");
+      setFormError(e.message || "Não foi possível registrar.");
     } finally {
       setSaving(false);
     }
@@ -1374,17 +1392,20 @@ const Financeiro = ({ tenantId, setTenantId }) => {
           {showForm && (
             <div style={{ background: T.card, border: `1.5px solid ${T.lime}55`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: T.lime, marginBottom: 16 }}>Registrar pagamento</div>
-              {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
+              {formError && <div style={{ marginBottom: 14 }}><ErrorBox>{formError}</ErrorBox></div>}
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
                 <div style={{ flex: 1, minWidth: 120 }}>
-                  <Input label="Valor (R$)" value={form.valorReais} onChange={(e) => setForm((f) => ({ ...f, valorReais: e.target.value }))} placeholder="299,00" />
+                  <Input label="Valor (R$)" value={form.valorReais} onChange={(e) => setForm((f) => ({ ...f, valorReais: e.target.value }))} placeholder="299,00"
+                    error={attempted ? paymentFormErrors.valorReais : undefined} />
                 </div>
                 <div style={{ flex: 1, minWidth: 120 }}>
-                  <Input label="Período (AAAA-MM)" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="2026-08" />
+                  <Input label="Período (AAAA-MM)" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="2026-08"
+                    error={attempted ? paymentFormErrors.period : undefined} />
                 </div>
                 <div style={{ flex: 1, minWidth: 140 }}>
                   <Select label="Status" value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                    options={[{ value: "pending", label: "Pendente" }, { value: "paid", label: "Pago" }]} />
+                    options={[{ value: "pending", label: "Pendente" }, { value: "paid", label: "Pago" }]}
+                    error={attempted ? paymentFormErrors.status : undefined} />
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
