@@ -299,6 +299,15 @@ pelo uso manual do painel — colisão de dado de ambiente, não bug).
 
 - **Repasses:** cálculo automático de receita/taxa continua fora de escopo até existir regra de
   negócio validada — o que existe hoje é só registro manual com a conta feita.
+- **Repasses, achado mais fundo (2026-10-16):** a própria existência da tela não bate com o modelo
+  de negócio documentado na seção 1 do `CLAUDE.md` — B2B2C onde a barbearia é a "cliente pagante"
+  da incubadora via mensalidade, sem nenhum fluxo de pagamento do cliente final passando pela
+  plataforma. "Repasses" pressupõe um modelo de marketplace/intermediador de pagamento (incubadora
+  processa o pagamento do corte, fica com taxa%, devolve líquido pra barbearia) — isso nunca existiu
+  em nenhuma outra parte do sistema; agendamento é só agenda, sem cobrança embutida. Provável herança
+  do protótipo visual original (que tinha telas de loja/comissão/financeiro avançado), implementada
+  no Sprint 6 sem confrontar contra o modelo de negócio real na hora. **Decisão do usuário: deixar
+  como está por enquanto**, só registrado — não remover nem corrigir até decisão futura.
 - **Impersonação (Sprint 8):** ainda não implementada — maior risco de segurança do que falta
   construir, não pular a revisão dedicada quando chegar a vez.
 - **Upload de logo:** só client-side por enquanto (preview local), sem persistência — se isso virar
