@@ -625,11 +625,14 @@ export default function App() {
 
           {/* "Ver tudo" logo abaixo do agendamento atual — leva pra Meus Agendamentos (lista
               completa de ativos), não só pro mais próximo mostrado no card acima. Mesmas cores
-              do botão padrão da tela (outline dourado), igual "+ Agendar novo horário" abaixo. */}
-          <div onClick={() => setScreen("meus-agendamentos")} style={{
-            textAlign: "center", border: `1.5px solid ${T.gold}`, borderRadius: 10, padding: 12,
-            fontSize: 13, fontWeight: 700, color: T.gold, cursor: "pointer", marginBottom: 12,
-          }}>Ver tudo</div>
+              do botão padrão da tela (outline dourado), igual "+ Agendar novo horário" abaixo —
+              só que menor e alinhado à direita, não ocupando a largura toda. */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            <div onClick={() => setScreen("meus-agendamentos")} style={{
+              border: `1.5px solid ${T.gold}`, borderRadius: 8, padding: "7px 16px",
+              fontSize: 12, fontWeight: 700, color: T.gold, cursor: "pointer",
+            }}>Ver tudo</div>
+          </div>
 
           {/* Agendar horário: continua acessível, mas não é mais o elemento dominante */}
           <div onClick={() => setScreen("servico")} style={{
