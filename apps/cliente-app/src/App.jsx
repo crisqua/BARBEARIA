@@ -421,10 +421,15 @@ export default function App() {
   }, []);
 
   // Catálogo carregado assim que há sessão — reutilizado em várias telas.
+  // Agendamentos entraram aqui também (16/10/2026): antes só carregavam ao entrar
+  // em "meus-agendamentos" (useEffect preso à tela, removido), o que nunca rodava
+  // ao abrir o app — a Início (Sprint 16) ficava sempre em "nenhum agendamento",
+  // mesmo tendo dado, até o usuário visitar "Meus Agendamentos" pelo menos uma vez.
   useEffect(() => {
     if (!user) return;
     listServices().then((r) => setServices(r.items)).catch(() => {});
     listProfessionals().then((r) => setAllProfessionals(r.items)).catch(() => {});
+    listAppointments().then((r) => setAppointments(r.items)).catch(() => {});
   }, [user]);
 
   // Rebusca ao entrar na tela de escolha de serviço — evita oferecer um
@@ -450,13 +455,6 @@ export default function App() {
       .catch((e) => setSlotsError(e.message || "Não foi possível carregar os horários."))
       .finally(() => setSlotsLoading(false));
   }, [screen, selectedPro, selectedService, selectedDate]);
-
-  useEffect(() => {
-    if (screen !== "meus-agendamentos") return;
-    listAppointments()
-      .then((r) => setAppointments(r.items))
-      .catch(() => {});
-  }, [screen]);
 
   const handleLogin = async (email, password) => {
     const res = await apiLogin(email, password);
