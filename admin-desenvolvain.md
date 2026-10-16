@@ -29,10 +29,11 @@ obrigatória por campo com bloqueio de avanço entre passos.
 **Ainda mock/não construído:** Suporte, Releases, impersonação ("Acessar como admin"), deploy em
 produção.
 
-**Planejado, aguardando aprovação:** Sprint 7 (seção 6) — Dashboard e Usuários deixam de somar dado
-de todas as barbearias cross-tenant, passam a mostrar visão leve da plataforma + detalhe sob demanda
-por barbearia. Motivado por `desempenho_barbearia.md` (14/10/2026), que mediu 6 telas do painel
-passando de 1s com volume realista de barbearias.
+**Planejado, escopo fechado, implementação não iniciada:** Sprint 7 (seção 6) — Dashboard e Usuários
+deixam de somar dado de todas as barbearias cross-tenant, passam a mostrar visão leve da plataforma +
+detalhe sob demanda por barbearia. Motivado por `desempenho_barbearia.md` (14/10/2026), que mediu 6
+telas do painel passando de 1s com volume realista de barbearias. Validado com protótipo visual
+(canvas separado) antes de mexer no código real.
 
 ## 3. Arquitetura
 
@@ -158,7 +159,7 @@ mesmo nível de validação client-side que o resto do form — o backend contin
 verdade via `class-validator` no DTO). `Input`/`Select` (componentes compartilhados, ~17 usos no
 arquivo) ganharam prop `error` opcional, retrocompatível.
 
-### ⏳ Sprint 7 — Performance: Dashboard e Usuários passam a ser por barbearia — planejado, aguardando aprovação
+### ⏳ Sprint 7 — Performance: Dashboard e Usuários passam a ser por barbearia — planejado, escopo fechado
 
 **Motivação.** `desempenho_barbearia.md` (14/10/2026, relatório gerado em sessão separada via app)
 mediu as 6 telas do painel que somam dado de **todas** as barbearias — Dashboard, Atividade,
@@ -184,11 +185,25 @@ mesmo jeito.
   as barbearias juntas.
 - MRR e o gráfico "Barbearias por Plano" reaproveitam o cache de 90s que `GET /v1/admin/subscriptions`
   já mantém — nenhuma tabela nova, nenhuma mudança de RLS.
+- **Atividade recente sai do Dashboard** (confirmado) — era uma das 6 telas lentas do relatório e não
+  estava coberta por este sprint; em vez de deixar embutida e aceitar que continua lenta, sai da tela
+  principal. Não tem substituto definido ainda — fica de fora por enquanto, não é regressão escondida,
+  é decisão explícita.
+- Usuários deixa de ser item fixo do menu lateral (sidebar) — remove de `NAV` em `App.jsx`. Acesso
+  passa a ser só pelo botão **"Ir para Barbearias"** no Dashboard (nome confirmado — não "Ir para
+  Usuários", porque a tela é sobre a barbearia, usuários é só uma parte do que ela mostra).
 - Usuários passa a exigir escolher 1 barbearia antes de listar (hoje lista cross-tenant por padrão).
-- Tela de drill-down por barbearia mostra só o que o sistema já calcula hoje: agendamentos do mês,
-  profissionais ativos, clientes cadastrados, gráfico de agendamentos dos últimos 6 meses — **sem
+- Tela de drill-down por barbearia mostra: agendamentos do mês, profissionais (ativos **e** inativos,
+  contados separado — mesmo padrão visual que o card "Barbearias" do Dashboard já usa, total + "X
+  ativos · Y inativos"), clientes cadastrados, gráfico de agendamentos dos últimos 6 meses — **sem
   faturamento/ticket médio**. Decisão explícita: isso seria um primeiro passo em "dashboard financeiro
   avançado", que a seção 4 do `CLAUDE.md` marca fora do MVP de propósito.
+- **Novo, achado durante o protótipo:** a lista de usuários do drill-down ganha busca por nome e
+  paginação (3 por página na prova visual; valor real a decidir na implementação).
+- **Gráficos sem biblioteca nova** (confirmado) — SVG desenhado à mão, consistente com o resto do
+  monorepo (`painel-barbearia`/`cliente-app` também não usam nenhuma).
+- **Fora de escopo deste sprint:** exportar CSV com todas as barbearias (pedido à parte, usuário ainda
+  vai definir o layout — ver seção de riscos/pendências se isso avançar depois).
 
 **Achado que simplifica o backend.** `GET /v1/admin/users` já aceita `?tenantId=`
 (`admin-users-query.dto.ts`) e, quando usado, já abre só 1 transação em vez do loop cross-tenant — a
@@ -199,32 +214,56 @@ tela Usuários resolve majoritariamente com mudança de frontend, sem endpoint n
 |---|---|
 | `admin-dashboard.service.ts` | Alterado — remove o loop `mapWithConcurrency` sobre profissionais/agendamentos/pagamentos; MRR e `trialsAtivos` passam a vir do mesmo cache de `AdminSubscriptionsService` em vez de buscar `Subscription` de novo por tenant |
 | `admin-subscriptions.service.ts` | Alterado — expõe a contagem de barbearias por plano em cima do array que `list()` já lê do cache (sem nova leitura ao banco) |
-| `admin-tenants.service.ts` | Alterado — método novo `getStats(tenantId)`: 1 `runInTenantContext`, devolve agendamentos do mês, profissionais ativos, clientes cadastrados, série de 6 meses |
+| `admin-tenants.service.ts` | Alterado — método novo `getStats(tenantId)`: 1 `runInTenantContext`, devolve agendamentos do mês, profissionais ativos e inativos (contagem separada), clientes cadastrados, série de 6 meses |
 | `admin-tenants.controller.ts` | Alterado — rota nova `GET /v1/admin/tenants/:id/stats` |
+| `admin-users-query.dto.ts` | Alterado — campo novo `name` (busca parcial, opcional) |
+| `admin-users.service.ts` | Alterado — filtro por `name` (case-insensitive, `contains`) quando informado |
 | `test/admin/admin-tenants-stats.e2e-spec.ts` | **Novo** — RBAC (403 não-super_admin) + isolamento (stats de uma barbearia não vazam dado de outra) |
 
 **Frontend (`apps/admin-desenvolvain/src/App.jsx`):**
 | Componente | Mudança |
 |---|---|
-| `Dashboard` (~L426) | Alterado — remove cards de Barbeiros na rede/Agendamentos por mês/Churn; adiciona gráfico "Barbearias por Plano"; adiciona botão pra tela de drill-down |
-| `Usuarios` (~L1370) | Alterado — adiciona seletor de barbearia; só busca depois de selecionar; adiciona cards de stats + gráfico de 6 meses acima da lista |
-| `src/api/client.js` | Alterado — função nova `getTenantStats(tenantId)` |
+| `NAV` (~L267) | Alterado — remove o item "Usuários" da seção Plataforma |
+| `Dashboard` (~L426) | Alterado — remove cards de Barbeiros na rede/Agendamentos por mês/Churn e o painel de Atividade recente; adiciona gráfico "Barbearias por Plano"; adiciona botão "Ir para Barbearias" |
+| `Usuarios` (~L1370) | Alterado — adiciona seletor de barbearia; só busca depois de selecionar; adiciona cards de stats (profissionais com detalhamento ativos/inativos) + gráfico de 6 meses; adiciona campo de busca por nome + paginação acima/abaixo da lista |
+| `src/api/client.js` | Alterado — função nova `getTenantStats(tenantId)`; `getUsers()` passa `name` como mais um parâmetro de query quando presente |
 
-Sem extração pra arquivo novo por enquanto (os dois componentes continuam dentro de `App.jsx`, mesmo
+Sem extração pra arquivo novo por enquanto (os componentes continuam dentro de `App.jsx`, mesmo
 padrão do resto do arquivo — seção 10 do `CLAUDE.md` pede extração incremental, não reescrita).
 
-**Em aberto, preciso de decisão antes de implementar:**
-1. **Atividade recente** é uma das 6 telas lentas do relatório e **não está coberta por este sprint**
-   — hoje ela aparece embutida no Dashboard (painel lateral). A referência do Pizzaria não tem esse
-   painel na tela principal. Mantém do jeito que está (aceitando que continua lenta), tira do
-   Dashboard, ou vira parte deste sprint também?
-2. **Biblioteca de gráfico:** nenhum app do monorepo usa biblioteca de gráfico hoje (conferido —
-   `painel-barbearia`, `cliente-app` e este também não têm nenhuma). Os dois gráficos daqui (pizza de
-   ~5 fatias, barras de 6 meses) são simples o bastante pra desenhar à mão em SVG/CSS, sem dependência
-   nova — recomendo esse caminho por consistência com o resto do projeto (zero libs de UI em lugar
-   nenhum), mas confirma antes de eu decidir sozinho.
-3. **Critério de "profissionais ativos"/"clientes cadastrados"** no drill-down: só `active=true` (mesmo
-   filtro que o Dashboard atual já usa pra barbeiros) ou todos cadastrados, independente de status?
+**Protótipo visual aprovado** (canvas separado, não é código do app) cobrindo as duas telas com dado
+fictício — usado pra validar o layout e fechar as decisões acima antes de mexer no código real.
+
+**Plano de implementação, em fases (ordem de execução):**
+
+1. **Busca por nome em Usuários** (menor risco, aditivo) — `admin-users-query.dto.ts` ganha campo
+   `name` opcional validado; `admin-users.service.ts` filtra por `contains` case-insensitive quando
+   informado.
+2. **Endpoint novo de stats por barbearia** — `admin-tenants.service.ts` ganha `getStats(tenantId)` (1
+   `runInTenantContext`: agendamentos do mês, `profissionaisAtivos`/`profissionaisInativos` separados,
+   clientes cadastrados, série dos últimos 6 meses); rota nova `GET /v1/admin/tenants/:id/stats` em
+   `admin-tenants.controller.ts`; teste novo `test/admin/admin-tenants-stats.e2e-spec.ts` (RBAC +
+   isolamento + conferência dos números).
+3. **Dashboard simplificado** — `admin-subscriptions.service.ts` expõe `tenantsByPlan:
+   [{planCode, planName, count}]` em cima do array que `list()` já lê do cache (sem nova leitura ao
+   banco); `admin-dashboard.service.ts` remove o loop `mapWithConcurrency` pesado, MRR/trials/
+   distribuição por plano passam a vir desse cache.
+   - **Ajuste necessário no teste existente** (`admin-dashboard.e2e-spec.ts`, achado ao revisar antes
+     de planejar): remove as asserções de `barbersActive`/`appointmentsThisMonth` (campos que deixam
+     de existir na resposta); o teste "reflete uma assinatura ativa no MRR" cria a assinatura direto
+     via `tx.subscription.create()` (Prisma puro), o que **nunca invalida o cache de Assinaturas** —
+     depois da mudança isso cairia na mesma armadilha de cache do incidente de setembro (dado
+     desatualizado). Troca pra criar a assinatura via `PATCH /v1/admin/tenants/:id/subscription` (já
+     invalida o cache certo), que também é mais fiel a como uma assinatura nasce de verdade no sistema.
+4. **Cliente de API** — `src/api/client.js` ganha `getTenantStats(tenantId)`; `getUsers()` passa `name`
+   como parâmetro de query quando presente.
+5. **Dashboard (frontend)** — remove "Usuários" de `NAV`; `Dashboard` perde os cards antigos e o painel
+   de Atividade recente, ganha o gráfico "Barbearias por Plano" (SVG) e o botão "Ir para Barbearias".
+6. **Usuários/drill-down (frontend)** — `Usuarios` ganha seletor de barbearia, cards de stats
+   (profissionais ativos/inativos separados), gráfico de 6 meses (SVG), busca por nome, paginação e a
+   lista de usuários.
+7. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual no
+   painel local se o backend estiver de pé.
 
 ### ⏳ Sprint 8 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
