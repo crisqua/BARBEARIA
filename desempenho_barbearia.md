@@ -205,6 +205,7 @@ Os tempos são p95, em milissegundos.
 - **Direções de correção:**
   - Trocar `bcryptjs` por `bcrypt` (nativo, roda fora da thread principal) ou `argon2`. Ambos estão de acordo com a seção 6.1.4 do `CLAUDE.md`.
   - Avaliar o custo 10–11 em vez de 12.
+- **Status:** ✅ corrigido em 16/10/2026 — troca por `bcrypt` nativo (mesmo formato de hash do `bcryptjs`, senhas já cadastradas continuam válidas, zero migração de dado). Mantido o custo 12 — a causa raiz era rodar na thread principal, não o custo em si. Medido isoladamente (5 hashes simultâneos, fora do contexto HTTP completo): tempo total caiu de 1.587ms pra 604ms, e o maior atraso causado no event loop caiu de 498ms pra 20ms — confirma que o processo para de travar durante o cálculo do hash.
 
 ### 3.4 Concorrência nas rotas comuns está ok
 Com RTT de 20 ms, as rotas comuns ficaram abaixo de 1s mesmo com 50 requisições simultâneas:
