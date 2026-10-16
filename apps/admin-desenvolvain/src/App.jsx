@@ -1815,6 +1815,10 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
   // separada, que já causou um bug real de corrida de render nessa mesma tela de admin.
   const [subscription, setSubscription] = useState(undefined);
   const [error, setError] = useState("");
+  // Erro de AÇÃO (criar/trocar/cancelar), separado do "error" de carregamento de página acima —
+  // mesma separação que corrigiu o bug do Financeiro (formError vs. error): reusar a mesma
+  // variável faria o ternário de nível de página sumir com o painel inteiro numa falha de ação.
+  const [actionError, setActionError] = useState("");
   const [novoPlanoId, setNovoPlanoId] = useState("");
   const [acting, setActing] = useState(false);
 
@@ -1831,6 +1835,7 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
   useEffect(() => {
     setSubscription(undefined);
     setError("");
+    setActionError("");
     setNovoPlanoId("");
     if (!tenantId) return;
     getTenantSubscription(tenantId)
@@ -1846,10 +1851,13 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
   const criarAssinatura = async () => {
     if (!novoPlanoId) return;
     setActing(true);
+    setActionError("");
     try {
       const sub = await updateTenantSubscription(tenantId, { planId: novoPlanoId });
       setSubscription(sub);
       await reloadOverview();
+    } catch (e) {
+      setActionError(e.message || "Não foi possível criar a assinatura.");
     } finally {
       setActing(false);
     }
@@ -1857,10 +1865,13 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
 
   const trocarPlano = async (planId) => {
     setActing(true);
+    setActionError("");
     try {
       const sub = await updateTenantSubscription(tenantId, { planId });
       setSubscription(sub);
       await reloadOverview();
+    } catch (e) {
+      setActionError(e.message || "Não foi possível trocar o plano.");
     } finally {
       setActing(false);
     }
@@ -1868,10 +1879,13 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
 
   const toggleStatus = async () => {
     setActing(true);
+    setActionError("");
     try {
       const sub = await updateTenantSubscription(tenantId, { status: subscription.status === "active" ? "cancelled" : "active" });
       setSubscription(sub);
       await reloadOverview();
+    } catch (e) {
+      setActionError(e.message || "Não foi possível atualizar o status da assinatura.");
     } finally {
       setActing(false);
     }
@@ -1911,6 +1925,7 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
           <div style={{ fontSize: 13, color: T.text, marginBottom: 14 }}>
             <strong>{selectedTenant?.name}</strong> ainda não tem assinatura.
           </div>
+          {actionError && <div style={{ marginBottom: 14 }}><ErrorBox>{actionError}</ErrorBox></div>}
           <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
             <Select label="Plano" value={novoPlanoId} onChange={(e) => setNovoPlanoId(e.target.value)}
               options={[{ value: "", label: "Selecione…" }, ...planos.map((p) => ({ value: p.id, label: p.name }))]} />
@@ -1919,6 +1934,7 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
         </div>
       ) : (
         <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+          {actionError && <div style={{ marginBottom: 14 }}><ErrorBox>{actionError}</ErrorBox></div>}
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 18 }}>
             <div>
               <div style={{ fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Plano atual</div>
