@@ -244,3 +244,32 @@ Com o banco em São Paulo e a API em Oregon (RTT ~170 ms):
   2. Região do Supabase.
   3. Troca do `bcryptjs`.
   4. Agregações do Painel Master (precisa decidir a estratégia de RLS).
+
+---
+
+## 5. Follow-up (2026-10-16) — Sprint 7: Dashboard/Usuários deixam de somar cross-tenant
+
+**Metodologia diferente de propósito.** Em vez de repetir o benchmark local simulado (seção 1), medi direto contra o **homolog real** (`barberaria-api-homolog.onrender.com`), que já tinha os mesmos **56 tenants reais** usados no item 2 da seção 4 — é o ambiente de verdade, não simulação, incluindo a latência de rede real Render↔Supabase (item "Pré-condição de infraestrutura" acima, ainda não resolvido).
+
+### O que a Sprint 7 mudou (ver `admin-desenvolvain.md`, seção 6)
+Dashboard e Usuários do Painel Master pararam de abrir uma transação por barbearia pra somar tudo de todas juntas — Dashboard agora reaproveita o cache de 90s de Assinaturas, e o detalhe por barbearia virou um endpoint novo (`GET /v1/admin/tenants/:id/stats`) que só olha 1 barbearia por vez.
+
+### Resultado medido
+
+| Rota | Antes (seção 4, 55 tenants) | Agora (homolog real, 56 tenants) |
+|---|---|---|
+| `GET /v1/admin/dashboard/overview` | 2,19s (sempre, cresce com o nº de barbearias) | **5,95s frio** (1ª chamada, cache de Assinaturas vazio) → **0,57-0,93s quente** (chamadas seguintes, dentro da janela de 90s) |
+| `GET /v1/admin/tenants/:id/stats` (novo) | não existia | **1,76s** na 1ª barbearia da lista, **2,26s** na última — praticamente igual, confirma que não depende mais da posição nem do total de barbearias |
+| `GET /v1/admin/users?tenantId=` | já existia, não medido isoladamente antes | **1,36s** |
+| `GET /v1/admin/activity` (controle — não entrou na Sprint 7, de propósito) | ~1,03s com 55 tenants | **5,05s** — continua com o mesmo problema antigo, como esperado |
+
+### Leitura honesta dos números
+
+- **O objetivo da Sprint 7 foi alcançado**: nenhuma das rotas novas/alteradas escala mais com o número de barbearias. A prova mais clara é `tenants/:id/stats` — pedir a barbearia #1 ou a #56 custa a mesma coisa, porque cada chamada agora só abre 1 transação, não mais uma por barbearia cadastrada. Antes, o Dashboard crescia 2,19s com 55 — hoje, se a plataforma tivesse 500 barbearias, esse comportamento não mudaria.
+- **A linha "`GET /v1/admin/activity`: 5,05s" é o controle que prova isso não é só o Render/Supabase estando lentos no momento** — essa rota não foi tocada pela Sprint 7, continua fazendo o loop antigo por tenant, e continua tão lenta quanto o relatório original previa. Se tudo tivesse ficado rápido por acaso (ambiente, não código), essa rota teria melhorado junto — não melhorou.
+- **Achado novo, não é regressão, é custo que já existia e ficou mais visível**: com o loop por tenant removido, o que sobrou dominando o tempo é a **distância de rede Render↔Supabase**, já registrada como pendência na seção 4 ("Pré-condição de infraestrutura"). Uma chamada trivial sem RLS e sem loop nenhum (`GET /v1/admin/tenants`, listagem simples) já leva **0,94s** sozinha — é basicamente o preço de uma ida e volta de rede nesse ambiente hoje. Isso explica por que até as rotas "corrigidas" ainda não ficam abaixo de 1s aqui: a correção resolveu o problema de **escala** (crescer com o nº de barbearias), não o problema de **distância** (que já estava mapeado e seguia fora do escopo da Sprint 7).
+- **Achado novo, esse sim uma oportunidade de ajuste real**: `getStats()` faz 10 queries (4 + 6 do gráfico de 6 meses) dentro da mesma transação via `Promise.all` — mas como todas correm na mesma conexão/transação do Postgres, o banco as executa uma de cada vez por trás dos panos (o `Promise.all` não paraleliza de verdade aqui, só evita esperar uma terminar antes de *disparar* a próxima). Com latência cross-region, isso significa **10 idas e vindas sequenciais** por chamada — dá pra reduzir juntando o gráfico de 6 meses numa única query agrupada por mês (`GROUP BY` ou `date_trunc`) em vez de 6 queries separadas, cortando de 10 pra ~5 viagens de rede. Não implementado agora — registrado como melhoria futura, não bloqueia a Sprint 7.
+
+### Conclusão do follow-up
+
+A Sprint 7 resolveu exatamente o que se propôs a resolver: tirar a dependência do número de barbearias cadastradas do custo dessas telas. O que ainda deixa as respostas acima de 1s nesse ambiente é a latência de rede entre Render e Supabase — já era um risco conhecido, documentado antes da Sprint 7 existir, e continua sendo o próximo item de maior impacto pra resolver (trocar a região de um dos dois serviços, sem custo extra).
