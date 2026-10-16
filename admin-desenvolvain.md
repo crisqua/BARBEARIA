@@ -131,7 +131,7 @@ abaixo, na mesma ordem.
 | 14 | Painel Master | Changelog manual (`Release`) — Configurações da Plataforma já está pronta, falta só essa parte | ⏳ Parcialmente feito |
 | 15 | Painel Master | Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção atualizado | ⏳ Não iniciado |
 | 16 | App Cliente | Menu lateral (drawer) + histórico do cliente em primeiro plano na tela Início, reaproveitando filtros já existentes — só frontend | ✅ Concluído (16/10/2026) |
-| 17 | App Cliente | Leva o menu lateral pras outras telas reais do app (Horários, Profissionais, Meus Agendamentos/Históricos) — centraliza o Drawer dentro do `Phone` em vez de duplicar | ⏳ Planejado |
+| 17 | App Cliente | Leva o menu lateral pra **todas** as telas do app (12 ao todo — exceto login/register, que não têm sessão ainda) — centraliza o Drawer dentro do `Phone` em vez de duplicar | ⏳ Planejado |
 
 ### ✅ Sprint 1 — [Painel Master] Onboarding real + acerto de contrato
 Login funcional, Onboarding conectado (`createTenant()` real), Barbearias (lista+detalhe+suspender)
@@ -720,32 +720,37 @@ usuário sai da Início (ex: entra em "Nossos Profissionais" ou "Meus Agendament
 passo a passo pela seta "←" de cada tela — não tem atalho direto pra pular pra outra seção sem passar
 pela Início de novo. Pedido do usuário (16/10/2026): levar o menu lateral pro resto do app.
 
-**Decisão de escopo — quais telas recebem o hambúrguer:**
-- **Entram:** as 4 telas reais do MVP sempre alcançáveis a partir da Início — Horários de
-  Funcionamento, Nossos Profissionais, Meus Agendamentos, Meus Históricos.
-- **Não entram:** as 4 telas mockadas fora do MVP (Loja, Assinar Plano, Confirmar Assinatura, Meu
-  Plano — seção 4 do `CLAUDE.md`, não são prioridade); e a tela de confirmação de agendamento
-  ("Agendado!"/"Remarcado!") — decisão de design: ela só tem "Voltar ao Início", de propósito, pra não
-  distrair de confirmar que a ação deu certo.
-- **Em aberto, decidir antes de implementar:** as 3 telas do próprio fluxo de agendamento (Escolha o
-  Serviço, Escolha o Profissional, Escolha o Horário) entram ou não? Abrir o menu no meio de um
-  agendamento e navegar pra outro lugar abandonaria o serviço/profissional já escolhidos sem nenhum
-  aviso — não é óbvio que seja desejável. Essa sprint não decide isso sozinha.
+**Decisão de escopo, confirmada pelo usuário (16/10/2026): todas as telas do app, sem exceção.**
+- **Entram:** as 4 telas reais do MVP (Horários de Funcionamento, Nossos Profissionais, Meus
+  Agendamentos, Meus Históricos), as 3 do fluxo de agendamento (Escolha o Serviço, Escolha o
+  Profissional, Escolha o Horário), as 4 telas mockadas fora do MVP (Loja, Assinar Plano, Confirmar
+  Assinatura, Meu Plano — seção 4 do `CLAUDE.md`; o menu entra nelas também, mas elas continuam fora
+  de qualquer navegação real, sem link alcançável no app) e a tela de confirmação de agendamento
+  ("Agendado!"/"Remarcado!").
+- **Não entram, por não ter como entrar — não é escolha de escopo, é restrição técnica:** `login` e
+  `register` (`LoginScreen`/`RegisterScreen`). Essas telas rodam **antes** de existir sessão — não tem
+  `user` nem `tenant` autenticado ainda, e o Drawer mostra "Sair" e itens que pressupõem estar logado.
+  Não faz sentido técnico mostrar esse menu numa tela de login.
 
 **Achado técnico que muda como vai ser implementado — centralizar em vez de duplicar.** Hoje o
-`<Drawer>` só é renderizado dentro do bloco `screen === "home"`. Copiar isso em cada tela nova (4+
-lugares, mais se as 3 do fluxo de agendamento entrarem) duplicaria a mesma renderização várias vezes.
-Melhor: mover o `<Drawer>` pra dentro do próprio componente `Phone` — que já embrulha **toda** tela do
-app, e que já ganhou `position: relative` na Sprint 16 exatamente como âncora pro drawer. `Phone`
-passa a aceitar os mesmos props que o `Drawer` precisa (`tenant`, `user`, `menuOpen`, `onCloseMenu`,
-`onNavigate`, `onLogout`) e renderiza o `Drawer` internamente, uma vez só. Cada tela que quiser o
-hambúrguer só precisa passar esses props pro `<Phone>` e adicionar o botão no próprio header — sem
-duplicar a lógica do drawer em si.
+`<Drawer>` só é renderizado dentro do bloco `screen === "home"`. Com a decisão de "todas as telas",
+copiar isso em cada uma (11 telas além da Início) duplicaria a mesma renderização 11 vezes. Melhor:
+mover o `<Drawer>` pra dentro do próprio componente `Phone` — que já embrulha **toda** tela do app
+(inclusive `login`/`register`, que não vão usar o drawer, mas passam pelo mesmo componente), e que já
+ganhou `position: relative` na Sprint 16 exatamente como âncora pro drawer. `Phone` passa a aceitar os
+mesmos props que o `Drawer` precisa (`tenant`, `user`, `menuOpen`, `onCloseMenu`, `onNavigate`,
+`onLogout`) e renderiza o `Drawer` internamente, uma vez só, só quando esses props existem (as telas
+de login/register não os passam, então não renderizam o drawer — nenhum `if` extra precisa existir
+pra isso). Cada tela que quiser o hambúrguer só precisa passar esses props pro `<Phone>` e adicionar o
+botão no próprio header — sem duplicar a lógica do drawer em si.
 
-`BackHeader` (componente compartilhado, usado nas 11 telas que não são a Início) ganha um prop
-opcional novo, `onMenu` — quando presente, mostra o ícone de hambúrguer ao lado do título (`← Título
-    ☰`); quando ausente, continua exatamente como está hoje, sem mudar nada nas telas que não entram
-nessa sprint.
+`BackHeader` (componente compartilhado, usado em 11 das 12 telas que recebem o menu — todas menos a
+Início, que já tem header próprio desde a Sprint 16) ganha um prop opcional novo, `onMenu` — quando
+presente, mostra o ícone de hambúrguer ao lado do título (`← Título     ☰`).
+
+A tela `confirmacao` ("Agendado!"/"Remarcado!") é a única exceção estrutural: hoje não usa
+`BackHeader` nenhum (só o botão "Voltar ao Início", sem seta de voltar nem título com header) — vai
+precisar de um hambúrguer isolado (sem o resto do `BackHeader`), não só passar `onMenu`.
 
 **Arquivos — Frontend (`apps/cliente-app/src/App.jsx`, único arquivo, como sempre nesse app):**
 
@@ -754,7 +759,8 @@ nessa sprint.
 | `Phone` (componente) | Ganha props novos (`tenant`, `user`, `menuOpen`, `onCloseMenu`, `onNavigate`, `onLogout`) e passa a renderizar `<Drawer>` internamente, uma vez, quando esses props existem |
 | `BackHeader` (componente) | Ganha prop opcional `onMenu` — ícone de hambúrguer ao lado do título quando presente |
 | Bloco `screen === "home"` | Remove o `<Drawer>` próprio (agora duplicado) — passa os mesmos props pro `<Phone>` em vez disso |
-| Blocos `horarios`, `profissionais`, `meus-agendamentos`, `meus-historicos` | `<BackHeader>` ganha `onMenu={() => setMenuOpen(true)}`; `<Phone>` ganha os props do drawer |
+| Blocos `horarios`, `profissionais`, `meus-agendamentos`, `meus-historicos`, `loja`, `planos`, `confirmar-plano`, `meu-plano`, `servico`, `profissional`, `horario` (11 telas) | `<BackHeader>` ganha `onMenu={() => setMenuOpen(true)}`; `<Phone>` ganha os props do drawer |
+| Bloco `confirmacao` | Ganha um botão de hambúrguer isolado (sem `BackHeader`, estrutura própria); `<Phone>` ganha os props do drawer |
 
 Sem mudança de backend, sem endpoint novo — mesma base de dado que a Sprint 16 já usa.
 
@@ -765,12 +771,15 @@ Sem mudança de backend, sem endpoint novo — mesma base de dado que a Sprint 1
    Início continua funcionando igual, agora passando os props pro `Phone` em vez de renderizar o
    `Drawer` ela mesma).
 2. **`BackHeader` ganha o hambúrguer opcional** (`onMenu`), sem conectar em nenhuma tela ainda.
-3. **Conecta nas 4 telas reais** — Horários de Funcionamento, Nossos Profissionais, Meus
+3. **Conecta nas 4 telas reais do MVP** — Horários de Funcionamento, Nossos Profissionais, Meus
    Agendamentos, Meus Históricos.
-4. **Decisão em aberto** — confirmar com o usuário se as 3 telas do fluxo de agendamento entram, antes
-   de mexer nelas.
-5. **Verificação manual** — smoke test nas telas atualizadas, celular e desktop (mesma preocupação de
-   sempre: `Phone` tem duas variantes de renderização).
+4. **Conecta nas 3 telas do fluxo de agendamento** — Escolha o Serviço, Escolha o Profissional,
+   Escolha o Horário.
+5. **Conecta nas 4 telas fora do MVP** — Loja, Assinar Plano, Confirmar Assinatura, Meu Plano (mesmo
+   não sendo alcançáveis por navegação real hoje, ficam consistentes com o resto do app).
+6. **Tela `confirmacao`** — hambúrguer isolado, já que não usa `BackHeader`.
+7. **Verificação manual** — smoke test em todas as 12 telas atualizadas, celular e desktop (mesma
+   preocupação de sempre: `Phone` tem duas variantes de renderização).
 
 ## 7. Testes
 
