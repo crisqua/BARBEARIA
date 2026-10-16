@@ -5,10 +5,10 @@ import {
   createTenantPayment,
   createTenantPayout,
   getAccessToken,
-  getActivity,
   getDashboardOverview,
   getSettings,
   getTenant,
+  getTenantStats,
   getUsers,
   listPayments,
   listPayouts,
@@ -285,7 +285,6 @@ const NAV = [
   {
     section: "Plataforma",
     items: [
-      { id: "usuarios", icon: "👥", label: "Usuários" },
       { id: "suporte", icon: "💬", label: "Suporte" },
       { id: "releases", icon: "⚡", label: "Releases" },
     ],
@@ -396,74 +395,114 @@ const Sidebar = ({ active, setActive, user, onLogout, isMobile, open, onClose })
 // ────────────────────────────────────────────────────────
 // TELA: DASHBOARD
 // ────────────────────────────────────────────────────────
-// Rótulo amigável por tipo de evento — só as ações que o backend realmente
-// grava (ver PlatformActivity/activity-log.util.ts). "Trial expirado" e
-// "Suporte aberto" ficam fora de propósito: nenhuma das duas tem regra de
-// negócio implementada ainda (ver admin-desenvolvain.md).
-const ATIVIDADE_LABEL = {
-  tenant_created: "Nova barbearia criada",
-  tenant_suspended: "Barbearia suspensa",
-  tenant_reactivated: "Barbearia reativada",
-  subscription_created: "Assinatura criada",
-  plan_changed: "Plano atualizado",
-  payment_registered: "Pagamento registrado",
-  payment_paid: "Pagamento recebido",
-  payout_registered: "Repasse registrado",
-  payout_paid: "Repasse pago",
-};
+/**
+ * Fatias de um gráfico de pizza SVG (raio 80, viewBox 200x200) a partir de
+ * [{planCode, planName, count}]. Caso especial: 1 única fatia preenchendo
+ * 100% vira círculo cheio — um arco SVG entre ângulo inicial e final
+ * idênticos (volta completa) não desenha nada.
+ */
+function buildPieSlices(data) {
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+  if (total === 0) return [];
+  const palette = [T.lime, T.info, T.mutedHi, T.warning, T.danger];
 
-const tempoRelativo = (iso) => {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diffMs / 60000);
-  if (min < 1) return "agora";
-  if (min < 60) return `há ${min}min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `há ${h}h`;
-  const d = Math.floor(h / 24);
-  return `há ${d}d`;
-};
+  if (data.length === 1) {
+    return [{ ...data[0], color: palette[0], fullCircle: true }];
+  }
+
+  let angle = 0;
+  const toPoint = (deg) => {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return [100 + 80 * Math.cos(rad), 100 + 80 * Math.sin(rad)];
+  };
+
+  return data.map((d, i) => {
+    const startAngle = angle;
+    const endAngle = angle + (d.count / total) * 360;
+    angle = endAngle;
+    const [x1, y1] = toPoint(startAngle);
+    const [x2, y2] = toPoint(endAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    const path = `M100,100 L${x1.toFixed(2)},${y1.toFixed(2)} A80,80 0 ${largeArc},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
+    return { ...d, color: palette[i % palette.length], path };
+  });
+}
 
 const Dashboard = ({ setActive }) => {
   const [overview, setOverview] = useState(null);
   const [tenants, setTenants] = useState([]);
-  const [atividades, setAtividades] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getDashboardOverview(), listTenants(), getActivity(8)])
-      .then(([ov, tenantsRes, activityRes]) => {
+    Promise.all([getDashboardOverview(), listTenants()])
+      .then(([ov, tenantsRes]) => {
         setOverview(ov);
         setTenants(
           [...tenantsRes.items].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5),
         );
-        setAtividades(activityRes);
       })
       .finally(() => setLoading(false));
   }, []);
 
+  const slices = overview ? buildPieSlices(overview.tenantsByPlan) : [];
+  const totalBarbearias = overview ? overview.tenantsByPlan.reduce((sum, p) => sum + p.count, 0) : 0;
+
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-0.02em" }}>Visão Geral</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Plataforma Barberaria</div>
+      <div style={{ marginBottom: 28, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-0.02em" }}>Visão Geral</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Plataforma Barberaria</div>
+        </div>
+        <Btn variant="ghost" size="sm" onClick={() => setActive("usuarios")}>Ir para Barbearias →</Btn>
       </div>
 
       {/* Stats */}
       <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-        <Stat label="MRR Total" value={overview ? formatMoney(overview.mrrCents) : "…"} />
         <Stat
           label="Barbearias"
           value={overview ? String(overview.tenants.total) : "…"}
           sub={overview ? `${overview.tenants.active} ativas · ${overview.tenants.suspended} suspensas` : undefined}
         />
-        <Stat label="Barbeiros na rede" value={overview ? String(overview.barbersActive) : "…"} />
-        <Stat label="Agendamentos/mês" value={overview ? String(overview.appointmentsThisMonth) : "…"} sub="em toda a rede" />
-        <Stat label="Churn" value="—" sub="chega no Sprint 6" />
+        <Stat label="MRR (assinaturas ativas)" value={overview ? formatMoney(overview.mrrCents) : "…"} />
       </div>
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+        {/* Barbearias por Plano */}
+        <div style={{ flex: 1, minWidth: 320, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16 }}>Barbearias por Plano</div>
+          {loading ? (
+            <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+          ) : slices.length === 0 ? (
+            <div style={{ fontSize: 12, color: T.muted }}>Nenhuma barbearia com assinatura ainda.</div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+              <svg width={200} height={200} viewBox="0 0 200 200" role="img" aria-label="Gráfico de pizza: distribuição de barbearias por plano">
+                {slices.map((s) =>
+                  s.fullCircle ? (
+                    <circle key={s.planCode} cx={100} cy={100} r={80} fill={s.color} />
+                  ) : (
+                    <path key={s.planCode} d={s.path} fill={s.color} />
+                  ),
+                )}
+                <circle cx={100} cy={100} r={46} fill={T.card} />
+                <text x={100} y={96} textAnchor="middle" fill={T.text} fontSize={22} fontWeight={900}>{totalBarbearias}</text>
+                <text x={100} y={114} textAnchor="middle" fill={T.muted} fontSize={10}>barbearias</text>
+              </svg>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {slices.map((s) => (
+                  <div key={s.planCode} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: T.text }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, display: "inline-block" }} />
+                    {s.planName} — {s.count}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Tabela de barbearias */}
-        <div style={{ flex: 3, minWidth: 340 }}>
+        <div style={{ flex: 2, minWidth: 360 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Barbearias mais recentes</div>
             <Btn variant="ghost" size="sm" onClick={() => setActive("onboarding")}>+ Nova</Btn>
@@ -507,30 +546,6 @@ const Dashboard = ({ setActive }) => {
               })}
             />
           )}
-        </div>
-
-        {/* Atividade recente */}
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Atividade recente</div>
-          </div>
-          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-            {loading ? (
-              <div style={{ padding: "12px 16px", fontSize: 12, color: T.muted }}>Carregando…</div>
-            ) : atividades.length === 0 ? (
-              <div style={{ padding: "12px 16px", fontSize: 12, color: T.muted }}>Nenhuma atividade ainda.</div>
-            ) : (
-              atividades.map((a, i) => (
-                <div key={a.id} style={{ padding: "12px 16px", borderBottom: i < atividades.length - 1 ? `1px solid ${T.border}22` : "none" }}>
-                  <div style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{ATIVIDADE_LABEL[a.action] || a.action}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, gap: 8 }}>
-                    <span style={{ fontSize: 11, color: T.lime, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.description}</span>
-                    <span style={{ fontSize: 11, color: T.muted, whiteSpace: "nowrap" }}>{tempoRelativo(a.createdAt)}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -1367,73 +1382,180 @@ const Financeiro = () => {
 // ────────────────────────────────────────────────────────
 const roleColor = { super_admin: T.lime, admin: T.info, barbeiro: T.warning, cliente: T.mutedHi };
 
+const MONTH_ABBR = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const monthLabel = (ym) => MONTH_ABBR[parseInt(ym.split("-")[1], 10) - 1];
+
+/** Barras de um gráfico SVG (altura máx 120) a partir de monthlyAppointments: [{month: "2026-05", count}]. */
+function buildBars(monthlyAppointments) {
+  const max = Math.max(...monthlyAppointments.map((m) => m.count), 1);
+  const chartH = 120;
+  const gap = 14;
+  const barW = 36;
+  return monthlyAppointments.map((m, i) => {
+    const h = Math.round((m.count / max) * chartH);
+    return {
+      key: m.month,
+      label: monthLabel(m.month),
+      x: 10 + i * (barW + gap),
+      y: 140 - h,
+      h,
+      labelX: 10 + i * (barW + gap) + barW / 2,
+    };
+  });
+}
+
+const USUARIOS_PAGE_SIZE = 10;
+
 const Usuarios = () => {
+  const [tenants, setTenants] = useState([]);
+  const [tenantId, setTenantId] = useState("");
+  const [stats, setStats] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [roleFiltro, setRoleFiltro] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
+    listTenants().then((res) => setTenants(res.items));
+  }, []);
+
+  useEffect(() => {
+    if (!tenantId) {
+      setStats(null);
+      setUsuarios([]);
+      return;
+    }
     setLoading(true);
-    getUsers(roleFiltro ? { role: roleFiltro } : {})
-      .then((res) => setUsuarios(res.items))
+    setBusca("");
+    setPage(1);
+    Promise.all([getTenantStats(tenantId), getUsers({ tenantId, pageSize: 200 })])
+      .then(([statsRes, usersRes]) => {
+        setStats(statsRes);
+        setUsuarios(usersRes.items);
+      })
       .finally(() => setLoading(false));
-  }, [roleFiltro]);
+  }, [tenantId]);
+
+  const filtrados = usuarios.filter((u) => u.name.toLowerCase().includes(busca.trim().toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(filtrados.length / USUARIOS_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageUsuarios = filtrados.slice((currentPage - 1) * USUARIOS_PAGE_SIZE, currentPage * USUARIOS_PAGE_SIZE);
+  const bars = stats ? buildBars(stats.monthlyAppointments) : [];
+  const selectedTenant = tenants.find((t) => t.id === tenantId);
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
         <div>
           <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Usuários</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{usuarios.length} usuários {roleFiltro ? `(${roleFiltro})` : "em toda a plataforma"}</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Escolha uma barbearia pra ver os usuários e a operação dela</div>
         </div>
         <Select
-          value={roleFiltro}
-          onChange={(e) => setRoleFiltro(e.target.value)}
+          value={tenantId}
+          onChange={(e) => setTenantId(e.target.value)}
           options={[
-            { value: "", label: "Todos os papéis" },
-            { value: "super_admin", label: "Super Admin" },
-            { value: "admin", label: "Admin" },
-            { value: "barbeiro", label: "Barbeiro" },
-            { value: "cliente", label: "Cliente" },
+            { value: "", label: "Selecione uma barbearia…" },
+            ...tenants.map((t) => ({ value: t.id, label: t.name })),
           ]}
         />
       </div>
-      {loading ? (
+
+      {!tenantId ? (
+        <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 12, padding: 60, textAlign: "center", color: T.muted, fontSize: 13 }}>
+          Selecione uma barbearia acima pra ver agendamentos, profissionais, clientes e usuários dela.
+        </div>
+      ) : loading ? (
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : (
-        <Table
-          cols={["Usuário", "Role", "Barbearia", "Status"]}
-          rows={usuarios.map((u, i) => (
-            <TRow key={u.id} last={i === usuarios.length - 1} cells={[
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Avatar name={u.name} size={28} color={roleColor[u.role]} />
-                <div>
-                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.name}</div>
-                  <div style={{ fontSize: 10, color: T.muted }}>{u.email}</div>
+        <div>
+          {/* Stats */}
+          <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
+            <Stat label="Agendamentos este mês" value={String(stats.appointmentsThisMonth)} />
+            <Stat
+              label="Profissionais"
+              value={String(stats.professionalsActive + stats.professionalsInactive)}
+              sub={`${stats.professionalsActive} ativos · ${stats.professionalsInactive} inativos`}
+            />
+            <Stat label="Clientes cadastrados" value={String(stats.clientsCount)} />
+          </div>
+
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+            {/* Gráfico 6 meses */}
+            <div style={{ flex: 1, minWidth: 320, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 16 }}>Agendamentos — últimos 6 meses</div>
+              <svg width="100%" height={160} viewBox="0 0 320 160" preserveAspectRatio="xMidYMax meet" role="img" aria-label="Gráfico de barras de agendamentos nos últimos 6 meses">
+                {bars.map((b) => (
+                  <g key={b.key}>
+                    <rect x={b.x} y={b.y} width={36} height={b.h} rx={4} fill={T.lime} />
+                    <text x={b.labelX} y={150} textAnchor="middle" fill={T.muted} fontSize={11}>{b.label}</text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+
+            {/* Usuários */}
+            <div style={{ flex: 2, minWidth: 360 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Usuários de {selectedTenant?.name}</div>
+                <input
+                  value={busca}
+                  onChange={(e) => { setBusca(e.target.value); setPage(1); }}
+                  placeholder="Buscar por nome…"
+                  style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", color: T.text, fontSize: 12.5, minWidth: 200, outline: "none" }}
+                />
+              </div>
+
+              {pageUsuarios.length === 0 ? (
+                <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "24px 18px", textAlign: "center", color: T.muted, fontSize: 12.5 }}>
+                  {busca ? `Nenhum usuário encontrado pra "${busca}".` : "Nenhum usuário cadastrado ainda."}
                 </div>
-              </div>,
-              <Badge color={roleColor[u.role]}>{u.role}</Badge>,
-              <span style={{ fontSize: 13, color: T.muted }}>{u.tenantName || "—"}</span>,
-              <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>,
-            ]} />
-          ))}
-          mobileRows={usuarios.map((u) => (
-            <MobileCard key={u.id}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Avatar name={u.name} size={32} color={roleColor[u.role]} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.name}</div>
-                  <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+              ) : (
+                <Table
+                  cols={["Usuário", "Role", "Status"]}
+                  rows={pageUsuarios.map((u, i) => (
+                    <TRow key={u.id} last={i === pageUsuarios.length - 1} cells={[
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <Avatar name={u.name} size={28} color={roleColor[u.role]} />
+                        <div>
+                          <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.name}</div>
+                          <div style={{ fontSize: 10, color: T.muted }}>{u.email}</div>
+                        </div>
+                      </div>,
+                      <Badge color={roleColor[u.role]}>{u.role}</Badge>,
+                      <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>,
+                    ]} />
+                  ))}
+                  mobileRows={pageUsuarios.map((u) => (
+                    <MobileCard key={u.id}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <Avatar name={u.name} size={32} color={roleColor[u.role]} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{u.name}</div>
+                          <div style={{ fontSize: 11, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Badge color={roleColor[u.role]}>{u.role}</Badge>
+                        <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>
+                      </div>
+                    </MobileCard>
+                  ))}
+                />
+              )}
+
+              {/* Paginação */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+                <span style={{ fontSize: 11.5, color: T.muted }}>
+                  {filtrados.length === 0 ? "0 resultados" : `Página ${currentPage} de ${totalPages} · ${filtrados.length} usuário${filtrados.length === 1 ? "" : "s"}`}
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))}>← Anterior</Btn>
+                  <Btn variant="ghost" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Próxima →</Btn>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Badge color={roleColor[u.role]}>{u.role}</Badge>
-                <Badge color={u.active !== false ? T.success : T.danger}>{u.active !== false ? "ativo" : "inativo"}</Badge>
-              </div>
-              {u.tenantName && <div style={{ fontSize: 12, color: T.muted }}>{u.tenantName}</div>}
-            </MobileCard>
-          ))}
-        />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
