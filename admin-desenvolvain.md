@@ -130,7 +130,8 @@ abaixo, na mesma ordem.
 | 13 | Painel Master | `SupportTicket` com RLS normal — mesmo padrão de soma por tenant via `TenantContextService`, sem `BYPASSRLS` dedicado | ⏳ Não iniciado |
 | 14 | Painel Master | Changelog manual (`Release`) — Configurações da Plataforma já está pronta, falta só essa parte | ⏳ Parcialmente feito |
 | 15 | Painel Master | Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção atualizado | ⏳ Não iniciado |
-| 16 | App Cliente | Menu lateral (drawer) + histórico do cliente em primeiro plano na tela Início, reaproveitando filtros já existentes — só frontend | ⏳ Planejado |
+| 16 | App Cliente | Menu lateral (drawer) + histórico do cliente em primeiro plano na tela Início, reaproveitando filtros já existentes — só frontend | ✅ Concluído (16/10/2026) |
+| 17 | App Cliente | Leva o menu lateral pras outras telas reais do app (Horários, Profissionais, Meus Agendamentos/Históricos) — centraliza o Drawer dentro do `Phone` em vez de duplicar | ⏳ Planejado |
 
 ### ✅ Sprint 1 — [Painel Master] Onboarding real + acerto de contrato
 Login funcional, Onboarding conectado (`createTenant()` real), Barbearias (lista+detalhe+suspender)
@@ -627,7 +628,7 @@ pelos devs a cada deploy).
 Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
 
-### ⏳ Sprint 16 — [App Cliente] Tela Início: menu lateral + histórico em primeiro plano — planejado, escopo fechado
+### ✅ Sprint 16 — [App Cliente] Tela Início: menu lateral + histórico em primeiro plano — concluído (16/10/2026)
 
 **Motivação:** a tela Início de hoje (`apps/cliente-app/src/App.jsx`, `screen === "home"`) é só um
 bloco de marca (logo/nome) + botão grande "Agendar Horário" + dois cards ("Profissionais" / "Meus
@@ -692,9 +693,84 @@ Sem mudança de backend, sem endpoint novo, sem migration — toda a informaçã
    cliente com só agendamento futuro, cliente com futuro + histórico. Esse app não tem suíte e2e
    própria hoje (só o backend tem, seção 7 do `CLAUDE.md`) — verificação é manual no navegador.
 
-**Em aberto:** o menu lateral deveria aparecer só na tela Início, ou em todas as telas do app
-(substituindo o `BackHeader`/navegação atual nas outras telas)? Essa sprint cobre só a Início; expandir
-pro resto do app é decisão separada, não incluída aqui.
+**Bugs reais achados e corrigidos durante/depois da implementação (16/10/2026):**
+- `confirmSlot()` (criar/remarcar agendamento) nunca atualizava o state `appointments` — só
+  `handleCancel` fazia isso. Não aparecia antes porque a Início antiga não mostrava nada de
+  agendamento; com o próximo agendamento ao vivo, a lacuna ficou visível (agendava e a Início
+  continuava mostrando o estado de antes). Corrigido: mesmo padrão de `handleCancel`, busca
+  `listAppointments()` de novo depois de salvar.
+- `appointments` só carregava num `useEffect` preso a `screen === "meus-agendamentos"` — nunca
+  rodava no login/reload. A Início sempre mostrava "nenhum agendamento futuro" mesmo tendo dado real,
+  até o usuário visitar "Meus Agendamentos" pelo menos uma vez. Corrigido: movido pro mesmo efeito de
+  `services`/`professionals` (roda assim que há sessão, reutilizado em várias telas).
+- Lacuna de produto (não bug de código): o card "Próximo agendamento" mostra só 1 (o mais próximo) e
+  o Histórico só mostra concluído/cancelado — um 2º agendamento futuro simultâneo não tinha onde
+  aparecer na Início. Resolvido com o botão "Ver tudo" (reaproveitado do rodapé do Histórico, estilo
+  outline dourado igual os outros botões da tela, pequeno e alinhado à direita) logo abaixo do card,
+  levando pra Meus Agendamentos — não lista todos os futuros na própria Início, de propósito, pra não
+  reabrir o escopo da sprint.
+
+**Em aberto, respondida pela Sprint 17 abaixo:** o menu lateral deveria aparecer só na tela Início, ou
+em todas as telas do app? Usuário pediu expandir (16/10/2026) — ver Sprint 17.
+
+### ⏳ Sprint 17 — [App Cliente] Menu lateral em todas as telas reais do MVP — planejado
+
+**Motivação:** a Sprint 16 deixou o drawer só na tela Início. Testando o app de verdade, uma vez que o
+usuário sai da Início (ex: entra em "Nossos Profissionais" ou "Meus Agendamentos"), só dá pra voltar
+passo a passo pela seta "←" de cada tela — não tem atalho direto pra pular pra outra seção sem passar
+pela Início de novo. Pedido do usuário (16/10/2026): levar o menu lateral pro resto do app.
+
+**Decisão de escopo — quais telas recebem o hambúrguer:**
+- **Entram:** as 4 telas reais do MVP sempre alcançáveis a partir da Início — Horários de
+  Funcionamento, Nossos Profissionais, Meus Agendamentos, Meus Históricos.
+- **Não entram:** as 4 telas mockadas fora do MVP (Loja, Assinar Plano, Confirmar Assinatura, Meu
+  Plano — seção 4 do `CLAUDE.md`, não são prioridade); e a tela de confirmação de agendamento
+  ("Agendado!"/"Remarcado!") — decisão de design: ela só tem "Voltar ao Início", de propósito, pra não
+  distrair de confirmar que a ação deu certo.
+- **Em aberto, decidir antes de implementar:** as 3 telas do próprio fluxo de agendamento (Escolha o
+  Serviço, Escolha o Profissional, Escolha o Horário) entram ou não? Abrir o menu no meio de um
+  agendamento e navegar pra outro lugar abandonaria o serviço/profissional já escolhidos sem nenhum
+  aviso — não é óbvio que seja desejável. Essa sprint não decide isso sozinha.
+
+**Achado técnico que muda como vai ser implementado — centralizar em vez de duplicar.** Hoje o
+`<Drawer>` só é renderizado dentro do bloco `screen === "home"`. Copiar isso em cada tela nova (4+
+lugares, mais se as 3 do fluxo de agendamento entrarem) duplicaria a mesma renderização várias vezes.
+Melhor: mover o `<Drawer>` pra dentro do próprio componente `Phone` — que já embrulha **toda** tela do
+app, e que já ganhou `position: relative` na Sprint 16 exatamente como âncora pro drawer. `Phone`
+passa a aceitar os mesmos props que o `Drawer` precisa (`tenant`, `user`, `menuOpen`, `onCloseMenu`,
+`onNavigate`, `onLogout`) e renderiza o `Drawer` internamente, uma vez só. Cada tela que quiser o
+hambúrguer só precisa passar esses props pro `<Phone>` e adicionar o botão no próprio header — sem
+duplicar a lógica do drawer em si.
+
+`BackHeader` (componente compartilhado, usado nas 11 telas que não são a Início) ganha um prop
+opcional novo, `onMenu` — quando presente, mostra o ícone de hambúrguer ao lado do título (`← Título
+    ☰`); quando ausente, continua exatamente como está hoje, sem mudar nada nas telas que não entram
+nessa sprint.
+
+**Arquivos — Frontend (`apps/cliente-app/src/App.jsx`, único arquivo, como sempre nesse app):**
+
+| Trecho | Mudança |
+|---|---|
+| `Phone` (componente) | Ganha props novos (`tenant`, `user`, `menuOpen`, `onCloseMenu`, `onNavigate`, `onLogout`) e passa a renderizar `<Drawer>` internamente, uma vez, quando esses props existem |
+| `BackHeader` (componente) | Ganha prop opcional `onMenu` — ícone de hambúrguer ao lado do título quando presente |
+| Bloco `screen === "home"` | Remove o `<Drawer>` próprio (agora duplicado) — passa os mesmos props pro `<Phone>` em vez disso |
+| Blocos `horarios`, `profissionais`, `meus-agendamentos`, `meus-historicos` | `<BackHeader>` ganha `onMenu={() => setMenuOpen(true)}`; `<Phone>` ganha os props do drawer |
+
+Sem mudança de backend, sem endpoint novo — mesma base de dado que a Sprint 16 já usa.
+
+**Plano de implementação, em fases (ordem de execução):**
+
+1. **`Phone` + `Drawer` centralizados** — move a renderização do drawer pra dentro do `Phone`, sem
+   duplicar; ainda sem nenhum botão de hambúrguer novo nessa fase, só a infraestrutura movida (a
+   Início continua funcionando igual, agora passando os props pro `Phone` em vez de renderizar o
+   `Drawer` ela mesma).
+2. **`BackHeader` ganha o hambúrguer opcional** (`onMenu`), sem conectar em nenhuma tela ainda.
+3. **Conecta nas 4 telas reais** — Horários de Funcionamento, Nossos Profissionais, Meus
+   Agendamentos, Meus Históricos.
+4. **Decisão em aberto** — confirmar com o usuário se as 3 telas do fluxo de agendamento entram, antes
+   de mexer nelas.
+5. **Verificação manual** — smoke test nas telas atualizadas, celular e desktop (mesma preocupação de
+   sempre: `Phone` tem duas variantes de renderização).
 
 ## 7. Testes
 
