@@ -109,29 +109,52 @@ GET   /v1/admin/activity                    — feed cross-tenant, ?limit= (padr
 
 ## 6. Sprints
 
-### ✅ Sprint 1 — Onboarding real + acerto de contrato
+Índice de todas as sprints do projeto, de todos os apps — cada uma com seu app de origem na coluna
+**Aplicativo**, pra não precisar de um documento por app. Detalhe completo de cada uma segue logo
+abaixo, na mesma ordem.
+
+| # | Aplicativo | Descrição | Status |
+|---|---|---|---|
+| 1 | Painel Master | Login funcional, Onboarding conectado (`createTenant()` real), CRUD de Barbearias (lista + detalhe + suspender) conectado | ✅ Concluído |
+| 2 | Painel Master | `GET /dashboard/overview` somando tenants por status, barbeiros ativos, agendamentos do mês — cross-tenant, achado do `NOBYPASSRLS` | ✅ Concluído |
+| 3 | Painel Master | `GET /admin/users` cross-tenant com filtro por role/tenant; super_admin sai direto, demais papéis somam por tenant | ✅ Concluído |
+| 4 | Painel Master | Catálogo de 3 planos fixos (`trial`/`pro`/`enterprise`), `code` travado, resto (nome/preço/módulos) editável pela tela | ✅ Concluído |
+| 5 | Painel Master | `Subscription` (RLS normal); Onboarding em 4 passos persiste tenant + admin + assinatura numa única transação | ✅ Concluído |
+| 6 | Painel Master | MRR real (soma de planos ativos); `Payment`/`Payout` com registro manual, sem motor de cálculo automático | ✅ Concluído |
+| 7 | Painel Master | Elimina o loop cross-tenant de Dashboard/Usuários; vira visão leve + drill-down por barbearia sob demanda (`GET /tenants/:id/stats`) | ✅ Concluído (16/10/2026) |
+| 8 | Painel Master | `GET /admin/payments` cross-tenant removido; Financeiro vira por barbearia (dash do mês + histórico 3 meses + filtro Mês/Ano) | ✅ Concluído (16/10/2026) |
+| 9 | Painel Master | `GET /admin/subscriptions` cross-tenant removido; resumo leve (4 cards) + gestão de 1 barbearia por vez (criar/trocar/cancelar plano) | ✅ Concluído (16/10/2026) |
+| 10 | Painel Master | Elimina o último loop cross-tenant que sobrou (`getPerTenantSubscriptions`) via função Postgres `SECURITY DEFINER` — 1ª exceção de RLS fora de `tenants` | ⏳ Aguardando decisão |
+| 11 | Infra/API | Render (Oregon) × Supabase (Ohio) confirmados como causa raiz: nenhuma API de `painel-barbearia`/`cliente-app` fica < 1s sob carga, nem as mais simples | ⏳ Aguardando decisão |
+| 12 | Painel Master | "Acessar como admin" de uma barbearia — elevação de privilégio, token de vida curta, log obrigatório, revisão de segurança dedicada | ⏳ Não iniciado |
+| 13 | Painel Master | `SupportTicket` com RLS normal — mesmo padrão de soma por tenant via `TenantContextService`, sem `BYPASSRLS` dedicado | ⏳ Não iniciado |
+| 14 | Painel Master | Changelog manual (`Release`) — Configurações da Plataforma já está pronta, falta só essa parte | ⏳ Parcialmente feito |
+| 15 | Painel Master | Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção atualizado | ⏳ Não iniciado |
+| 16 | App Cliente | Menu lateral (drawer) + histórico do cliente em primeiro plano na tela Início, reaproveitando filtros já existentes — só frontend | ⏳ Planejado |
+
+### ✅ Sprint 1 — [Painel Master] Onboarding real + acerto de contrato
 Login funcional, Onboarding conectado (`createTenant()` real), Barbearias (lista+detalhe+suspender)
 conectada. `CreateTenantDto.admin` ganhou os campos que faltavam no protótipo.
 
-### ✅ Sprint 2 — Dashboard real (parcial)
+### ✅ Sprint 2 — [Painel Master] Dashboard real (parcial)
 `GET /v1/admin/dashboard/overview` — tenants por status, barbeiros ativos, agendamentos do mês, tudo
 cross-tenant somando por tenant (achado do `NOBYPASSRLS` documentado na seção 4).
 
-### ✅ Sprint 3 — Usuários cross-tenant
+### ✅ Sprint 3 — [Painel Master] Usuários cross-tenant
 `GET /v1/admin/users`, filtro por role/tenant. Super_admin sai direto (carve-out da migration 0002);
 demais papéis somam por tenant.
 
-### ✅ Sprint 4 — Catálogo de Planos
+### ✅ Sprint 4 — [Painel Master] Catálogo de Planos
 **Decisão confirmada:** 3 planos — `trial`, `pro`, `enterprise` (sem "Starter", diferente do
 protótipo original). `code` travado nesses 3 valores, resto editável pela tela.
 
-### ✅ Sprint 5 — Assinaturas + Onboarding completo
+### ✅ Sprint 5 — [Painel Master] Assinaturas + Onboarding completo
 `Subscription` (RLS normal, ver seção 4). Onboarding completo: passo 1 usa planos reais, passo 3
 mostra módulos do plano escolhido (só leitura), passo 4 persiste tenant+admin+assinatura numa
 transação. Bug real corrigido em teste: `upsert` do Prisma quebrava com campo `undefined` no
 `update` — trocado por create/update explícito.
 
-### ✅ Sprint 6 — Financeiro & Repasses
+### ✅ Sprint 6 — [Painel Master] Financeiro & Repasses
 MRR real (soma de `plan.priceCents` das assinaturas ativas). `Payment`/`Payout` com registro manual,
 sem motor de cálculo automático — Repasse só faz a aritmética (líquido = bruto − taxa%) sobre valores
 digitados pelo Super Admin. **Sem detecção automática de inadimplência** — "pagamentos pendentes" é
@@ -175,7 +198,7 @@ mesmo nível de validação client-side que o resto do form — o backend contin
 verdade via `class-validator` no DTO). `Input`/`Select` (componentes compartilhados, ~17 usos no
 arquivo) ganharam prop `error` opcional, retrocompatível.
 
-### ✅ Sprint 7 — Performance: Dashboard e Usuários passam a ser por barbearia — concluído (16/10/2026)
+### ✅ Sprint 7 — [Painel Master] Performance: Dashboard e Usuários passam a ser por barbearia — concluído (16/10/2026)
 
 **Motivação.** `desempenho_barbearia.md` (14/10/2026, relatório gerado em sessão separada via app)
 mediu as 6 telas do painel que somam dado de **todas** as barbearias — Dashboard, Atividade,
@@ -281,7 +304,7 @@ fictício — usado pra validar o layout e fechar as decisões acima antes de me
 7. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual no
    painel local se o backend estiver de pé.
 
-### ✅ Sprint 8 — Financeiro por barbearia (drill-down, mesmo padrão da Sprint 7) — concluído (16/10/2026)
+### ✅ Sprint 8 — [Painel Master] Financeiro por barbearia (drill-down, mesmo padrão da Sprint 7) — concluído (16/10/2026)
 
 **Motivação:** o relatório de desempenho (`desempenho_barbearia.md`, item 3.2) lista `GET
 /v1/admin/payments` entre as telas cross-tenant que crescem com o número de barbearias (1.133ms sem
@@ -367,7 +390,7 @@ filtro Mês/Ano sem campo novo.
 5. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual
    no painel local.
 
-### ✅ Sprint 9 — Assinaturas por barbearia (drill-down, mesmo padrão da Sprint 7/8) — concluído (16/10/2026)
+### ✅ Sprint 9 — [Painel Master] Assinaturas por barbearia (drill-down, mesmo padrão da Sprint 7/8) — concluído (16/10/2026)
 
 **Motivação:** mesmo problema de `GET /v1/admin/payments` antes da Sprint 8 — `GET
 /v1/admin/subscriptions` (`admin-subscriptions.service.ts`, método `list()`) faz um loop cross-tenant
@@ -474,7 +497,7 @@ Sem migration — nenhum campo novo de schema, só contagem em cima do que já e
    compartilhado antes de navegar, mesmo padrão do botão de Financeiro da Sprint 8.
 6. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual.
 
-### ⏳ Sprint 10 — Performance do Dashboard/Assinaturas: função SECURITY DEFINER — aguardando decisão
+### ⏳ Sprint 10 — [Painel Master] Performance do Dashboard/Assinaturas: função SECURITY DEFINER — aguardando decisão
 
 **Motivação:** mesmo depois das Sprints 7-9 (que já eliminaram os loops cross-tenant de
 Dashboard/Usuários/Financeiro/Pagamentos/Assinaturas), continua sobrando **um** loop cross-tenant:
@@ -544,7 +567,7 @@ não muda.
 projeto introduz um bypass de RLS fora de `tenants`, decisão que o próprio `CLAUDE.md` pede pra
 parar e confirmar antes de agir (seção 10). Não iniciado até essa confirmação.
 
-### ⏳ Sprint 11 — Infra: região do banco longe da API (homolog) — aguardando decisão
+### ⏳ Sprint 11 — [Infra/API] Infra: região do banco longe da API (homolog) — aguardando decisão
 
 **Motivação:** avaliação de desempenho das APIs de "cliente barbearia" (`painel-barbearia` +
 `cliente-app` — não o Painel Master, que é escopo das Sprints 7-10) feita em 16/10/2026, medindo
@@ -586,23 +609,92 @@ pra perto do Supabase, ou vice-versa). Usuário optou por avaliar depois ("verei
 — não iniciado. Relevante também pra Produção, que ainda nem foi provisionada (seção 9) — a mesma
 decisão de região deveria valer desde a criação do ambiente de Produção, não só corrigir homolog.
 
-### ⏳ Sprint 12 — Impersonação ("Acessar como admin") — não iniciado
+### ⏳ Sprint 12 — [Painel Master] Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
 
-### ⏳ Sprint 13 — Suporte — não iniciado
+### ⏳ Sprint 13 — [Painel Master] Suporte — não iniciado
 `SupportTicket` com RLS normal. Spike técnico necessário: leitura cross-tenant sob RLS normal (mesmo
 padrão de soma por tenant já usado em todo o resto — não deveria precisar de `BYPASSRLS` dedicado
 como o plano original cogitava, já que o mesmo mecanismo de `TenantContextService` resolve isso desde
 o Sprint 2).
 
-### ⏳ Sprint 14 — Releases — parcialmente feito
+### ⏳ Sprint 14 — [Painel Master] Releases — parcialmente feito
 Configurações já está pronta (ver acima). Falta só `Release` (changelog, leitura manual, inserido
 pelos devs a cada deploy).
 
-### ⏳ Sprint 15 — Deploy — não iniciado
+### ⏳ Sprint 15 — [Painel Master] Deploy — não iniciado
 Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
+
+### ⏳ Sprint 16 — [App Cliente] Tela Início: menu lateral + histórico em primeiro plano — planejado, escopo fechado
+
+**Motivação:** a tela Início de hoje (`apps/cliente-app/src/App.jsx`, `screen === "home"`) é só um
+bloco de marca (logo/nome) + botão grande "Agendar Horário" + dois cards ("Profissionais" / "Meus
+Agendamentos"). Pra quem já é cliente da barbearia, não mostra nada sobre o que a pessoa já fez ou tem
+marcado — o histórico fica escondido atrás de 2 cliques ("Meus Agendamentos" → "Meus Históricos").
+Pedido do usuário (16/10/2026): tela mais moderna, com menu lateral de verdade (em vez de só 2 cards
+soltos) e o histórico do cliente aparecendo logo de cara.
+
+**Decisão de produto, confirmada na conversa:**
+1. **Menu lateral (drawer)** — abre pelo ícone de hambúrguer no canto superior esquerdo, cobre a tela
+   com um painel deslizante à esquerda (fecha tocando fora ou no próprio item "Sair"). Itens: Início,
+   Agendar Horário, Profissionais, Meus Agendamentos, Horários de Funcionamento, Sair — mesmo
+   conjunto de destinos que já existem hoje como telas separadas, só que acessíveis de um menu em vez
+   de 2 cards na Início.
+2. **Histórico em primeiro plano** — a tela Início passa a abrir mostrando: um card em destaque com o
+   **próximo agendamento** (se houver), depois a lista de **histórico** (concluídos/cancelados, mais
+   recentes primeiro). "Agendar Horário" continua acessível, mas vira um botão secundário (outline),
+   não é mais o elemento dominante da tela.
+3. Header compacto no topo (avatar + saudação + nome da barbearia), substituindo o bloco centralizado
+   grande de logo que ocupa a tela toda hoje.
+
+**Protótipo visual aprovado** (canvas separado, não é código do app):
+https://claude.ai/artifact/QHCGEnRzyL6cR2UNRfnyfK — aprovado pelo usuário ("ficou legal") em
+16/10/2026.
+
+**Achado ao investigar o código antes de planejar — isso é só frontend, sem endpoint novo.** O state
+`appointments` já existe no componente raiz (`App.jsx:302`), já é buscado via `listAppointments()` no
+login e depois de ações (linhas 378-379, 460-461), e a lógica de separar "próximo" (upcoming) de
+"histórico" **já existe**, duplicada em duas telas diferentes hoje:
+- `meus-agendamentos` (linha ~579): `status === 'needs_reschedule' || (status === 'scheduled' &&
+  startsAt >= now)`, ordenado crescente — isso é o "próximo agendamento" da nova Início.
+- `meus-historicos` (linha ~644): o inverso desse filtro, ordenado decrescente — isso é o "histórico"
+  da nova Início.
+
+A Sprint 16 não cria filtro novo, só reaproveita esses dois já existentes dentro da tela Início
+reescrita, em vez de deixá-los só nas telas antigas.
+
+**Decisão de escopo:** não é removido nada — `meus-agendamentos`/`meus-historicos` continuam
+existindo como estão (telas completas, com cancelar/remarcar), alcançáveis pelo menu lateral. A
+Início passa a mostrar só uma prévia (próximo + histórico recente) — "Ver tudo" no histórico leva pra
+`meus-agendamentos`/`meus-historicos` de verdade, não duplica a funcionalidade completa.
+
+**Arquivos — Frontend (`apps/cliente-app/src/App.jsx`):**
+
+| Trecho | Mudança |
+|---|---|
+| Bloco `screen === "home"` (~linha 486-515) | Reescrito: header compacto, card de próximo agendamento, botão secundário "Agendar Horário", lista de histórico (prévia) |
+| Novo: componente `Drawer` ou bloco inline | Menu lateral novo — não existe hoje nenhum componente de drawer no app; nasce nessa sprint |
+| Novo: state `menuOpen` | Controla abrir/fechar o drawer, local à tela Início (ou ao componente raiz, se o menu precisar abrir de outras telas também — decidir na implementação) |
+| Filtro "próximo"/"histórico" | Reaproveitado de `meus-agendamentos`/`meus-historicos` (mesma lógica, sem duplicar regra nova) |
+
+Sem mudança de backend, sem endpoint novo, sem migration — toda a informação já é buscada hoje.
+
+**Plano de implementação, em fases (ordem de execução):**
+
+1. **Drawer (menu lateral)** — componente novo, com os 5 itens de navegação + Sair, abre/fecha por
+   state, sobre a tela Início primeiro (não precisa existir nas outras telas ainda nessa fase).
+2. **Reescrita da tela Início** — header compacto, card de próximo agendamento (reaproveitando o
+   filtro de `meus-agendamentos`), botão secundário de agendar, lista de histórico (prévia,
+   reaproveitando o filtro de `meus-historicos`, com link "Ver tudo" pra tela completa).
+3. **Verificação manual** — smoke test local nos 3 cenários: cliente sem nenhum agendamento ainda,
+   cliente com só agendamento futuro, cliente com futuro + histórico. Esse app não tem suíte e2e
+   própria hoje (só o backend tem, seção 7 do `CLAUDE.md`) — verificação é manual no navegador.
+
+**Em aberto:** o menu lateral deveria aparecer só na tela Início, ou em todas as telas do app
+(substituindo o `BackHeader`/navegação atual nas outras telas)? Essa sprint cobre só a Início; expandir
+pro resto do app é decisão separada, não incluída aqui.
 
 ## 7. Testes
 
