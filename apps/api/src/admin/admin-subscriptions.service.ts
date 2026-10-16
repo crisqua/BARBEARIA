@@ -10,6 +10,13 @@ import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 export const SUBSCRIPTIONS_CACHE_KEY = 'admin:subscriptions:all';
 const SUBSCRIPTIONS_CACHE_TTL_SECONDS = 90;
 
+type PlanRow = { id: string; code: string; name: string; priceCents: number | null };
+type SubscriptionRow = { status: string; plan: PlanRow } & Record<string, unknown>;
+type PerTenantSubscription = {
+  tenant: { id: string; name: string; slug: string };
+  subscription: SubscriptionRow | null;
+};
+
 @Injectable()
 export class AdminSubscriptionsService {
   constructor(
@@ -19,23 +26,13 @@ export class AdminSubscriptionsService {
   ) {}
 
   /**
-   * `subscriptions` tem RLS normal (Sprint 5, decisão revista em relação ao
-   * plano original) — mesma soma por tenant já usada no Dashboard/Usuários,
-   * sem bypass de RLS novo. Paginação obrigatória (seção 8 do CLAUDE.md) —
-   * mesmo padrão em memória de AdminUsersService, já que não dá pra paginar
-   * no banco uma leitura que já é feita por tenant.
-   *
-   * Cache de 90s no resultado cheio (antes da paginação) — sem isso, cada
-   * página pedida (1, 2, 3...) refaz a busca em todos os tenants do zero pra
-   * mostrar só um pedaço diferente do mesmo resultado.
+   * Busca (ou lê do cache) a assinatura de cada barbearia — base compartilhada
+   * por `list()` e `getOverview()` (Sprint 7), pra não bater duas vezes no
+   * mesmo loop cross-tenant por causa de duas telas diferentes quererem o
+   * mesmo dado. Mesmo cache de 90s de sempre.
    */
-  async list(query: PaginationQueryDto) {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-
-    let perTenant = await this.cache.get<Array<{ tenant: { id: string; name: string; slug: string }; subscription: unknown }>>(
-      SUBSCRIPTIONS_CACHE_KEY,
-    );
+  private async getPerTenantSubscriptions(): Promise<PerTenantSubscription[]> {
+    let perTenant = await this.cache.get<PerTenantSubscription[]>(SUBSCRIPTIONS_CACHE_KEY);
 
     if (!perTenant) {
       const tenants = await this.prisma.tenant.findMany({
@@ -48,16 +45,61 @@ export class AdminSubscriptionsService {
           .runInTenantContext(t.id, (tx) =>
             tx.subscription.findUnique({ where: { tenantId: t.id }, include: { plan: true } }),
           )
-          .then((subscription) => ({ tenant: t, subscription })),
+          .then((subscription) => ({ tenant: t, subscription: subscription as SubscriptionRow | null })),
       );
 
       await this.cache.set(SUBSCRIPTIONS_CACHE_KEY, perTenant, SUBSCRIPTIONS_CACHE_TTL_SECONDS);
     }
 
+    return perTenant;
+  }
+
+  /**
+   * `subscriptions` tem RLS normal (Sprint 5, decisão revista em relação ao
+   * plano original) — mesma soma por tenant já usada no Dashboard/Usuários,
+   * sem bypass de RLS novo. Paginação obrigatória (seção 8 do CLAUDE.md) —
+   * mesmo padrão em memória de AdminUsersService, já que não dá pra paginar
+   * no banco uma leitura que já é feita por tenant.
+   */
+  async list(query: PaginationQueryDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+
+    const perTenant = await this.getPerTenantSubscriptions();
+
     const total = perTenant.length;
     const start = (page - 1) * pageSize;
 
     return { items: perTenant.slice(start, start + pageSize), total, page, pageSize };
+  }
+
+  /**
+   * MRR, trials ativos e distribuição de barbearias por plano — usado pelo
+   * Dashboard (Sprint 7, admin-desenvolvain.md) em vez do loop próprio que
+   * existia antes. Lê o MESMO cache de `list()`, nunca bate no banco de novo
+   * só por causa do Dashboard.
+   */
+  async getOverview() {
+    const perTenant = await this.getPerTenantSubscriptions();
+
+    const active = perTenant.filter(
+      (t): t is PerTenantSubscription & { subscription: SubscriptionRow } =>
+        !!t.subscription && t.subscription.status === 'active',
+    );
+
+    const mrrCents = active.reduce((sum, t) => sum + (t.subscription.plan.priceCents ?? 0), 0);
+    const trialsAtivos = active.filter((t) => t.subscription.plan.code === 'trial').length;
+
+    const byPlan = new Map<string, { planCode: string; planName: string; count: number }>();
+    for (const t of perTenant) {
+      if (!t.subscription) continue;
+      const { code, name } = t.subscription.plan;
+      const entry = byPlan.get(code);
+      if (entry) entry.count += 1;
+      else byPlan.set(code, { planCode: code, planName: name, count: 1 });
+    }
+
+    return { mrrCents, trialsAtivos, tenantsByPlan: Array.from(byPlan.values()) };
   }
 
   private async assertTenantExists(tenantId: string) {

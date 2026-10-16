@@ -1,69 +1,44 @@
 import { Injectable } from '@nestjs/common';
-import { mapWithConcurrency } from '../common/batch-map.util';
-import { nowInBarbershopTime } from '../common/time.util';
 import { PrismaService } from '../prisma/prisma.service';
-import { TenantContextService } from '../prisma/tenant-context.service';
+import { AdminSubscriptionsService } from './admin-subscriptions.service';
 
 @Injectable()
 export class AdminDashboardService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tenantContext: TenantContextService,
+    private readonly adminSubscriptionsService: AdminSubscriptionsService,
   ) {}
 
   /**
-   * `tenants` não tem RLS (seção 5.4/6.4 do CLAUDE.md) — dá pra ler cross-tenant
-   * direto. Mas `users` e `appointments` têm RLS FORÇADO, e a role de runtime
-   * (`barberaria_app`) é NOBYPASSRLS de propósito (scripts/setup-app-role.ts) —
-   * não existe leitura cross-tenant direta sem contexto de tenant nessas tabelas,
-   * por design. Em vez de criar qualquer mecanismo de bypass novo, soma por
-   * tenant usando o mesmo `TenantContextService` que todo o resto do sistema já
-   * usa pra RLS.
+   * Reescrito na Sprint 7 (admin-desenvolvain.md) — o overview antigo somava
+   * profissionais/agendamentos/pagamentos pendentes de TODAS as barbearias,
+   * abrindo uma transação por tenant (`TenantContextService`, já que `users`/
+   * `appointments` têm RLS forçado e a role de runtime é NOBYPASSRLS de
+   * propósito — não existe leitura cross-tenant direta nessas tabelas). Isso
+   * crescia linearmente com o número de barbearias (ver desempenho_barbearia.md,
+   * 14/10/2026: >2s com 55 barbearias). Decisão de produto, não só performance:
+   * o Dashboard não precisa mais desses números agregados — quem precisa de
+   * detalhe operacional de uma barbearia pede via `GET /v1/admin/tenants/:id/stats`
+   * (admin-tenants.service.ts), sob demanda, 1 tenant por vez.
    *
-   * SEM cache aqui, de propósito (removido em 2026-09-23) — esse overview soma
-   * tenants + users + appointments + subscriptions + payments, escritos por
-   * módulos demais pra invalidar com segurança sem esquecer um caminho.
-   * `mapWithConcurrency` (abaixo) já resolve o problema real (crash com muitos
-   * tenants); cache era só velocidade extra, e sem invalidação ele servia dado
-   * velho depois de qualquer escrita (pego pelos testes e2e — ver
-   * admin-dashboard.e2e-spec.ts, "reflete... recém-criados na contagem").
+   * `tenants` não tem RLS (seção 5.4/6.4 do CLAUDE.md) — as contagens abaixo são
+   * leitura direta, sem transação nenhuma. MRR/trials/distribuição por plano
+   * vêm do cache de 90s que `AdminSubscriptionsService` já mantém pra tela de
+   * Assinaturas — nenhuma leitura nova ao banco só por causa do Dashboard.
    */
   async overview() {
-    const now = nowInBarbershopTime();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-
-    const [totalTenants, activeTenants, suspendedTenants, tenants] = await Promise.all([
+    const [totalTenants, activeTenants, suspendedTenants, subscriptionsOverview] = await Promise.all([
       this.prisma.tenant.count(),
       this.prisma.tenant.count({ where: { status: 'active' } }),
       this.prisma.tenant.count({ where: { status: 'suspended' } }),
-      this.prisma.tenant.findMany({ select: { id: true } }),
+      this.adminSubscriptionsService.getOverview(),
     ]);
-
-    const perTenant = await mapWithConcurrency(tenants, 5, ({ id }) =>
-      this.tenantContext.runInTenantContext(id, async (tx) => {
-        const [barbers, appointments, subscription, pendingPayments] = await Promise.all([
-          tx.user.count({ where: { role: 'barbeiro', active: true } }),
-          tx.appointment.count({ where: { startsAt: { gte: monthStart, lt: monthEnd } } }),
-          tx.subscription.findUnique({ where: { tenantId: id }, include: { plan: true } }),
-          tx.payment.count({ where: { status: 'pending' } }),
-        ]);
-        return { barbers, appointments, subscription, pendingPayments };
-      }),
-    );
-
-    const assinaturasAtivas = perTenant
-      .map((t) => t.subscription)
-      .filter((s): s is NonNullable<typeof s> => !!s && s.status === 'active');
 
     return {
       tenants: { total: totalTenants, active: activeTenants, suspended: suspendedTenants },
-      barbersActive: perTenant.reduce((sum, t) => sum + t.barbers, 0),
-      appointmentsThisMonth: perTenant.reduce((sum, t) => sum + t.appointments, 0),
-      // Só soma — nenhuma regra de negócio nova (Sprint 6, ver admin-desenvolvain.md).
-      mrrCents: assinaturasAtivas.reduce((sum, s) => sum + (s.plan.priceCents ?? 0), 0),
-      trialsAtivos: assinaturasAtivas.filter((s) => s.plan.code === 'trial').length,
-      pendingPayments: perTenant.reduce((sum, t) => sum + t.pendingPayments, 0),
+      mrrCents: subscriptionsOverview.mrrCents,
+      trialsAtivos: subscriptionsOverview.trialsAtivos,
+      tenantsByPlan: subscriptionsOverview.tenantsByPlan,
     };
   }
 }

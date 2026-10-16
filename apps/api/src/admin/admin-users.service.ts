@@ -49,9 +49,16 @@ export class AdminUsersService {
 
     const items: AdminUserRow[] = [];
 
+    const nameFilter = query.name?.trim()
+      ? { name: { contains: query.name.trim(), mode: 'insensitive' as const } }
+      : undefined;
+
     const includeSuperAdmin = (!query.role || query.role === 'super_admin') && !query.tenantId;
     if (includeSuperAdmin) {
-      const superAdmins = await this.prisma.user.findMany({ where: { role: 'super_admin' }, select: SELECT });
+      const superAdmins = await this.prisma.user.findMany({
+        where: { role: 'super_admin', ...nameFilter },
+        select: SELECT,
+      });
       items.push(...superAdmins.map((u) => ({ ...u, tenantId: null, tenantName: null })));
     }
 
@@ -66,7 +73,7 @@ export class AdminUsersService {
       const perTenant = await mapWithConcurrency(tenants, 5, (t) =>
         this.tenantContext
           .runInTenantContext(t.id, (tx) =>
-            tx.user.findMany({ where: roleFilter ? { role: roleFilter } : undefined, select: SELECT }),
+            tx.user.findMany({ where: { ...(roleFilter ? { role: roleFilter } : {}), ...nameFilter }, select: SELECT }),
           )
           .then((users) => users.map((u) => ({ ...u, tenantId: t.id, tenantName: t.name }))),
       );

@@ -36,4 +36,9 @@ export class AdminTenantsController {
   update(@Param('id') id: string, @Body() dto: UpdateTenantDto) {
     return this.adminTenantsService.update(id, dto);
   }
+
+  @Get(':id/stats')
+  getStats(@Param('id') id: string) {
+    return this.adminTenantsService.getStats(id);
+  }
 }

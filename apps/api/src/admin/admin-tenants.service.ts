@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { hashPassword } from '../common/password.util';
+import { nowInBarbershopTime } from '../common/time.util';
 import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
@@ -112,5 +113,47 @@ export class AdminTenantsService {
     }
 
     return updated;
+  }
+
+  /**
+   * Stats de UMA barbearia, sob demanda — nasceu da Sprint 7 (admin-desenvolvain.md): o Dashboard
+   * parou de somar isso de todas as barbearias juntas (custo cresce com o número de barbearias,
+   * ver desempenho_barbearia.md), então quem precisa desse detalhe agora pede explicitamente, 1
+   * tenant por vez. 1 `runInTenantContext` só — nada de loop cross-tenant aqui.
+   */
+  async getStats(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException();
+
+    const now = nowInBarbershopTime();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+    const months = Array.from({ length: 6 }, (_, idx) => {
+      const i = 5 - idx;
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 1));
+      const month = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`;
+      return { month, start, end };
+    });
+
+    return this.tenantContext.runInTenantContext(tenantId, async (tx) => {
+      const [appointmentsThisMonth, professionalsActive, professionalsInactive, clientsCount, monthlyCounts] =
+        await Promise.all([
+          tx.appointment.count({ where: { startsAt: { gte: monthStart, lt: monthEnd } } }),
+          tx.user.count({ where: { role: 'barbeiro', active: true } }),
+          tx.user.count({ where: { role: 'barbeiro', active: false } }),
+          tx.user.count({ where: { role: 'cliente' } }),
+          Promise.all(months.map((m) => tx.appointment.count({ where: { startsAt: { gte: m.start, lt: m.end } } }))),
+        ]);
+
+      return {
+        appointmentsThisMonth,
+        professionalsActive,
+        professionalsInactive,
+        clientsCount,
+        monthlyAppointments: months.map((m, i) => ({ month: m.month, count: monthlyCounts[i] })),
+      };
+    });
   }
 }

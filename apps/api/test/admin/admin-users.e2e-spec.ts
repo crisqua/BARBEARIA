@@ -88,6 +88,30 @@ describe('Diretório de usuários do Super Admin (/v1/admin/users)', () => {
     expect(res.body.items.every((u: { tenantId: string }) => u.tenantId === seededTenant.tenantId)).toBe(true);
   });
 
+  it('filtra por nome (parcial, sem diferenciar maiúsculas)', async () => {
+    const unique = `Zeferino-${Date.now()}`;
+    await tenantContext.runInTenantContext(seededTenant.tenantId, (tx) =>
+      tx.user.create({
+        data: {
+          tenantId: seededTenant.tenantId,
+          role: 'cliente',
+          name: unique,
+          email: `zeferino-${Date.now()}@test.local`,
+          passwordHash: 'x',
+        },
+      }),
+    );
+
+    const res = await request(app.getHttpServer())
+      .get('/v1/admin/users')
+      .query({ name: unique.slice(0, 5).toLowerCase(), pageSize: 100 })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.some((u: { name: string }) => u.name === unique)).toBe(true);
+    expect(res.body.items.every((u: { name: string }) => u.name.toLowerCase().includes('zeferino'))).toBe(true);
+  });
+
   it('lista o próprio super_admin, sem tenant', async () => {
     const res = await request(app.getHttpServer())
       .get('/v1/admin/users')
