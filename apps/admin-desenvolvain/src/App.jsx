@@ -1411,7 +1411,6 @@ const Usuarios = () => {
   const [tenantId, setTenantId] = useState("");
   const [stats, setStats] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busca, setBusca] = useState("");
   const [page, setPage] = useState(1);
@@ -1427,7 +1426,15 @@ const Usuarios = () => {
       setError("");
       return;
     }
-    setLoading(true);
+    // Não usa uma flag "loading" separada de propósito — entre o clique que
+    // muda tenantId e esse efeito rodar, o componente ainda renderiza pelo
+    // menos uma vez com tenantId já setado mas stats ainda no valor antigo
+    // (null, se for a primeira seleção). Uma flag "loading" setada só aqui
+    // dentro do efeito chega tarde demais pra esse primeiro render — a tela
+    // já tentaria usar stats.algumCampo com stats null e quebraria. Em vez
+    // disso o próprio "stats ainda não existe" decide mostrar "Carregando…"
+    // (ver o JSX abaixo), que é verdade em qualquer um dos dois casos.
+    setStats(null);
     setError("");
     setBusca("");
     setPage(1);
@@ -1441,8 +1448,7 @@ const Usuarios = () => {
         setStats(statsRes);
         setUsuarios(usersRes.items);
       })
-      .catch((err) => setError(err.message || "Não foi possível carregar os dados dessa barbearia."))
-      .finally(() => setLoading(false));
+      .catch((err) => setError(err.message || "Não foi possível carregar os dados dessa barbearia."));
   }, [tenantId]);
 
   const filtrados = usuarios.filter((u) => u.name.toLowerCase().includes(busca.trim().toLowerCase()));
@@ -1473,10 +1479,10 @@ const Usuarios = () => {
         <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 12, padding: 60, textAlign: "center", color: T.muted, fontSize: 13 }}>
           Selecione uma barbearia acima pra ver agendamentos, profissionais, clientes e usuários dela.
         </div>
-      ) : loading ? (
-        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : error ? (
         <ErrorBox>{error}</ErrorBox>
+      ) : !stats ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : (
         <div>
           {/* Stats */}
