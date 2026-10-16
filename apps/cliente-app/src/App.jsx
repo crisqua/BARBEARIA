@@ -623,16 +623,23 @@ export default function App() {
             </div>
           )}
 
+          {/* "Ver tudo" logo abaixo do agendamento atual — leva pra Meus Agendamentos (lista
+              completa de ativos), não só pro mais próximo mostrado no card acima. Mesmas cores
+              do botão padrão da tela (outline dourado), igual "+ Agendar novo horário" abaixo. */}
+          <div onClick={() => setScreen("meus-agendamentos")} style={{
+            textAlign: "center", border: `1.5px solid ${T.gold}`, borderRadius: 10, padding: 12,
+            fontSize: 13, fontWeight: 700, color: T.gold, cursor: "pointer", marginBottom: 12,
+          }}>Ver tudo</div>
+
           {/* Agendar horário: continua acessível, mas não é mais o elemento dominante */}
           <div onClick={() => setScreen("servico")} style={{
             textAlign: "center", border: `1.5px solid ${T.gold}`, borderRadius: 10, padding: 12,
             fontSize: 13, fontWeight: 700, color: T.gold, cursor: "pointer", marginBottom: 28,
           }}>+ Agendar novo horário</div>
 
-          {/* Histórico, prévia — "Ver tudo" leva pra tela completa de sempre */}
+          {/* Histórico, prévia */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Histórico</div>
-            <div onClick={() => setScreen("meus-historicos")} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Ver tudo</div>
           </div>
           {historicoPrevia.length > 0 ? (
             historicoPrevia.map((a) => {
