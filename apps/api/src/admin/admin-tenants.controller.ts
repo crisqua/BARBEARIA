@@ -2,8 +2,8 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@ne
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { AdminTenantsService } from './admin-tenants.service';
+import { AdminTenantsQueryDto } from './dto/admin-tenants-query.dto';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
@@ -23,8 +23,8 @@ export class AdminTenantsController {
   }
 
   @Get()
-  list(@Query() query: PaginationQueryDto) {
-    return this.adminTenantsService.list(query.page ?? 1, query.pageSize ?? 20);
+  list(@Query() query: AdminTenantsQueryDto) {
+    return this.adminTenantsService.list(query.page ?? 1, query.pageSize ?? 20, query.name);
   }
 
   @Get(':id')

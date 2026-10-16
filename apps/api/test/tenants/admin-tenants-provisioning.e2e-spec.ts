@@ -133,6 +133,42 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
     expect(typeof res.body.total).toBe('number');
   });
 
+  it('busca por nome filtra no servidor (não só na página carregada)', async () => {
+    const slug = uniqueSlug('search-alvo');
+    const nomeUnico = `Barbearia Alvo Unico ${Date.now()}`;
+    const created = await request(app.getHttpServer())
+      .post('/v1/admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({
+        slug,
+        name: nomeUnico,
+        admin: { name: 'Admin Alvo', email: `admin-${slug}@test.local`, password: 'senha-forte-123' },
+        planId,
+      });
+    expect(created.status).toBe(201);
+    createdTenantIds.push(created.body.tenant.id);
+
+    // pageSize=1 de propósito: se a busca fosse só client-side sobre a página
+    // carregada, esse tenant (criado por último, mas não necessariamente na
+    // 1ª posição) poderia ficar fora da "página" e o teste provaria isso.
+    const res = await request(app.getHttpServer())
+      .get('/v1/admin/tenants')
+      .query({ name: nomeUnico, pageSize: 1 })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({ id: created.body.tenant.id, name: nomeUnico });
+
+    const semResultado = await request(app.getHttpServer())
+      .get('/v1/admin/tenants')
+      .query({ name: `nome-que-nao-existe-${Date.now()}` })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+    expect(semResultado.body.total).toBe(0);
+    expect(semResultado.body.items).toHaveLength(0);
+  });
+
   it('suspende um tenant e o login do admin dele para de funcionar', async () => {
     const slug = uniqueSlug('suspend');
     const created = await request(app.getHttpServer())

@@ -74,8 +74,10 @@ export const logout = () => apiFetch("/v1/auth/logout", { method: "POST" });
 export const whoami = () => apiFetch("/v1/admin/whoami");
 
 // ─── Tenants (barbearias clientes) ──────────────────────
-export const listTenants = (page = 1, pageSize = 50) =>
-  apiFetch(`/v1/admin/tenants?page=${page}&pageSize=${pageSize}`);
+export const listTenants = (page = 1, pageSize = 50, name) => {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), ...(name ? { name } : {}) });
+  return apiFetch(`/v1/admin/tenants?${query}`);
+};
 
 export const getTenant = (id) => apiFetch(`/v1/admin/tenants/${id}`);
 

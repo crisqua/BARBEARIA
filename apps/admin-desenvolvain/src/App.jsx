@@ -565,20 +565,39 @@ const statusBadge = (status) => ({
   label: status === "active" ? "ativo" : "suspenso",
 });
 
+const BARBEARIAS_PAGE_SIZE = 10;
+
 const Barbearias = () => {
   const [tenants, setTenants] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selecionada, setSelecionada] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [busca, setBusca] = useState("");
+  const [buscaAtiva, setBuscaAtiva] = useState("");
   const [acting, setActing] = useState(false);
 
-  const load = () =>
-    listTenants()
-      .then((res) => setTenants(res.items))
+  const load = () => {
+    setLoading(true);
+    return listTenants(page, BARBEARIAS_PAGE_SIZE, buscaAtiva || undefined)
+      .then((res) => { setTenants(res.items); setTotal(res.total); })
       .finally(() => setLoading(false));
+  };
 
-  useEffect(() => { load(); }, []);
+  // Busca de verdade no backend (query `name`), não um filtro sobre a página já
+  // carregada — senão uma barbearia fora da página atual nunca apareceria na busca.
+  // Debounce de 300ms pra não disparar 1 request por tecla digitada.
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaAtiva(busca.trim()), 300);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  // Toda busca nova volta pra página 1 — continuar na página 4 de uma busca
+  // diferente não faz sentido.
+  useEffect(() => { setPage(1); }, [buscaAtiva]);
+
+  useEffect(() => { load(); }, [page, buscaAtiva]);
 
   useEffect(() => {
     if (!selecionada) { setDetalhe(null); return; }
@@ -598,7 +617,7 @@ const Barbearias = () => {
     }
   };
 
-  const filtrados = tenants.filter((t) => t.name.toLowerCase().includes(busca.trim().toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(total / BARBEARIAS_PAGE_SIZE));
 
   if (selecionada) {
     if (!detalhe) {
@@ -655,10 +674,10 @@ const Barbearias = () => {
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
         <div>
           <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Barbearias</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{tenants.length} instâncias · {tenants.filter(t => t.status === "active").length} ativas</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{total} barbearia{total === 1 ? "" : "s"} no total</div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar..." style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 14px", color: T.text, fontSize: 13, outline: "none", width: 200 }} />
@@ -666,49 +685,60 @@ const Barbearias = () => {
       </div>
       {loading ? (
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
-      ) : filtrados.length === 0 ? (
-        <div style={{ fontSize: 12, color: T.muted }}>Nenhuma barbearia cadastrada ainda.</div>
+      ) : tenants.length === 0 ? (
+        <div style={{ fontSize: 12, color: T.muted }}>
+          {buscaAtiva ? `Nenhuma barbearia encontrada pra "${buscaAtiva}".` : "Nenhuma barbearia cadastrada ainda."}
+        </div>
       ) : (
-        <Table
-          cols={["Barbearia", "Identificador", "Criada em", "Status", ""]}
-          rows={filtrados.map((t, i) => {
-            const badge = statusBadge(t.status);
-            return (
-              <TRow key={t.id} last={i === filtrados.length - 1} cells={[
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Avatar name={t.name} size={30} />
-                  <div>
-                    <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.name}</div>
-                    <div style={{ fontSize: 10, color: T.muted }}>{t.slug}.barberaria.app</div>
-                  </div>
-                </div>,
-                <span style={{ fontSize: 13, color: T.muted }}>{t.slug}</span>,
-                <span style={{ fontSize: 13, color: T.muted }}>{formatDate(t.createdAt)}</span>,
-                <Badge color={badge.color}>{badge.label}</Badge>,
-                <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>,
-              ]} />
-            );
-          })}
-          mobileRows={filtrados.map((t) => {
-            const badge = statusBadge(t.status);
-            return (
-              <MobileCard key={t.id}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <>
+          <Table
+            cols={["Barbearia", "Identificador", "Criada em", "Status", ""]}
+            rows={tenants.map((t, i) => {
+              const badge = statusBadge(t.status);
+              return (
+                <TRow key={t.id} last={i === tenants.length - 1} cells={[
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Avatar name={t.name} size={30} />
                     <div>
                       <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.name}</div>
                       <div style={{ fontSize: 10, color: T.muted }}>{t.slug}.barberaria.app</div>
                     </div>
+                  </div>,
+                  <span style={{ fontSize: 13, color: T.muted }}>{t.slug}</span>,
+                  <span style={{ fontSize: 13, color: T.muted }}>{formatDate(t.createdAt)}</span>,
+                  <Badge color={badge.color}>{badge.label}</Badge>,
+                  <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>,
+                ]} />
+              );
+            })}
+            mobileRows={tenants.map((t) => {
+              const badge = statusBadge(t.status);
+              return (
+                <MobileCard key={t.id}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={t.name} size={30} />
+                      <div>
+                        <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{t.name}</div>
+                        <div style={{ fontSize: 10, color: T.muted }}>{t.slug}.barberaria.app</div>
+                      </div>
+                    </div>
+                    <Badge color={badge.color}>{badge.label}</Badge>
                   </div>
-                  <Badge color={badge.color}>{badge.label}</Badge>
-                </div>
-                <div style={{ fontSize: 12, color: T.muted }}>Criada em {formatDate(t.createdAt)}</div>
-                <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>
-              </MobileCard>
-            );
-          })}
-        />
+                  <div style={{ fontSize: 12, color: T.muted }}>Criada em {formatDate(t.createdAt)}</div>
+                  <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>
+                </MobileCard>
+              );
+            })}
+          />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16 }}>
+            <span style={{ fontSize: 11.5, color: T.muted }}>Página {page} de {totalPages} · {total} barbearia{total === 1 ? "" : "s"}</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>← Anterior</Btn>
+              <Btn variant="ghost" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Próxima →</Btn>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

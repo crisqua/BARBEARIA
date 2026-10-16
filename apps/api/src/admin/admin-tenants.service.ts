@@ -78,14 +78,23 @@ export class AdminTenantsService {
     }
   }
 
-  async list(page: number, pageSize: number) {
+  /**
+   * Paginação real no banco (skip/take + count separado) — nunca busca todas as barbearias pra
+   * depois filtrar/paginar em memória no frontend. Busca por nome também vira filtro de query
+   * (`contains`, case-insensitive), não um filtro client-side sobre a página já carregada, senão
+   * uma barbearia fora da página atual nunca apareceria na busca.
+   */
+  async list(page: number, pageSize: number, name?: string) {
+    const where = name ? { name: { contains: name, mode: 'insensitive' as const } } : undefined;
+
     const [items, total] = await Promise.all([
       this.prisma.tenant.findMany({
+        where,
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.tenant.count(),
+      this.prisma.tenant.count({ where }),
     ]);
 
     return { items, total, page, pageSize };
