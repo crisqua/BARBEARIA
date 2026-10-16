@@ -355,7 +355,7 @@ const Sidebar = ({ active, setActive, user, onLogout, isMobile, open, onClose })
           {NAV.map((sec, si) => (
             <div key={si}>
               {sec.section && (
-                <div style={{ padding: "14px 22px 6px", fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>{sec.section}</div>
+                <div style={{ padding: "14px 22px 6px", fontSize: 10, color: T.text, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em" }}>{sec.section}</div>
               )}
               {sec.items.map(item => {
                 const on = active === item.id;
@@ -365,7 +365,7 @@ const Sidebar = ({ active, setActive, user, onLogout, isMobile, open, onClose })
                     cursor: "pointer",
                     borderLeft: on ? `2px solid ${T.lime}` : "2px solid transparent",
                     background: on ? T.limeSoft : "transparent",
-                    color: on ? T.lime : T.muted, fontSize: 13, fontWeight: on ? 600 : 400,
+                    color: on ? T.lime : T.text, fontSize: 13, fontWeight: on ? 600 : 400,
                     transition: "all 0.12s"
                   }}>
                     <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>
