@@ -29,6 +29,11 @@ obrigatória por campo com bloqueio de avanço entre passos.
 **Ainda mock/não construído:** Suporte, Releases, impersonação ("Acessar como admin"), deploy em
 produção.
 
+**Planejado, aguardando aprovação:** Sprint 7 (seção 6) — Dashboard e Usuários deixam de somar dado
+de todas as barbearias cross-tenant, passam a mostrar visão leve da plataforma + detalhe sob demanda
+por barbearia. Motivado por `desempenho_barbearia.md` (14/10/2026), que mediu 6 telas do painel
+passando de 1s com volume realista de barbearias.
+
 ## 3. Arquitetura
 
 `apps/admin-desenvolvain` é um app dentro do monorepo (não é mais repositório separado — movido
@@ -53,8 +58,8 @@ compartilhado, não Context — funciona porque todo componente do arquivo lê `
 | `Payout` (Repasse) | Sim | **Normal** | ✅ Sprint 6 |
 | `PlatformSettings` | Não | Isenta (singleton global) | ✅ feature extra |
 | `PlatformActivity` | Sim | **Normal** | ✅ feature extra |
-| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 8 |
-| `Release` | Não | Isenta (planejado) | ⏳ Sprint 9 (parcial) |
+| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 9 |
+| `Release` | Não | Isenta (planejado) | ⏳ Sprint 10 (parcial) |
 
 ### Mudança de decisão registrada durante a execução (Sprint 5)
 
@@ -153,21 +158,89 @@ mesmo nível de validação client-side que o resto do form — o backend contin
 verdade via `class-validator` no DTO). `Input`/`Select` (componentes compartilhados, ~17 usos no
 arquivo) ganharam prop `error` opcional, retrocompatível.
 
-### ⏳ Sprint 7 — Impersonação ("Acessar como admin") — não iniciado
+### ⏳ Sprint 7 — Performance: Dashboard e Usuários passam a ser por barbearia — planejado, aguardando aprovação
+
+**Motivação.** `desempenho_barbearia.md` (14/10/2026, relatório gerado em sessão separada via app)
+mediu as 6 telas do painel que somam dado de **todas** as barbearias — Dashboard, Atividade,
+Usuários, Assinaturas, Pagamentos, Repasses — e achou que todas passam de 1s com volume realista (55
+barbearias simuladas). A causa é estrutural, não um bug pontual: `users`/`appointments`/
+`subscriptions`/`payments`/`payouts`/`platform_activities` têm RLS forçado e a role de runtime
+(`barberaria_app`) é `NOBYPASSRLS` de propósito (seção 4 deste documento) — não existe leitura
+cross-tenant direta, só soma por tenant via `TenantContextService`, uma transação por barbearia. O
+custo cresce linearmente com o número de barbearias cadastradas: quanto mais a plataforma vende, pior
+essas telas ficam.
+
+**Decisão de produto, não só de performance.** Em vez de atacar "somar tudo de todo mundo mais rápido"
+(exigiria uma função `SECURITY DEFINER` bypassando RLS — avaliado e descartado por enquanto, é mudança
+de estratégia de segurança que merece revisão própria se algum dia for necessária), o Dashboard e
+Usuários mudam de escopo: o Super Admin não precisa de "total de agendamentos de todas as barbearias
+somado", precisa de visão da plataforma (quantas barbearias, MRR, distribuição por plano) + poder
+abrir o detalhe de UMA barbearia por vez, sob demanda. Padrão de referência: a tela "Vendas por
+Pizzaria" já em produção no projeto irmão (`PIZZARIA`), que resolve exatamente esse mesmo problema do
+mesmo jeito.
+
+**Escopo fechado nesta conversa:**
+- Dashboard deixa de somar profissionais ativos / agendamentos do mês / pagamentos pendentes de todas
+  as barbearias juntas.
+- MRR e o gráfico "Barbearias por Plano" reaproveitam o cache de 90s que `GET /v1/admin/subscriptions`
+  já mantém — nenhuma tabela nova, nenhuma mudança de RLS.
+- Usuários passa a exigir escolher 1 barbearia antes de listar (hoje lista cross-tenant por padrão).
+- Tela de drill-down por barbearia mostra só o que o sistema já calcula hoje: agendamentos do mês,
+  profissionais ativos, clientes cadastrados, gráfico de agendamentos dos últimos 6 meses — **sem
+  faturamento/ticket médio**. Decisão explícita: isso seria um primeiro passo em "dashboard financeiro
+  avançado", que a seção 4 do `CLAUDE.md` marca fora do MVP de propósito.
+
+**Achado que simplifica o backend.** `GET /v1/admin/users` já aceita `?tenantId=`
+(`admin-users-query.dto.ts`) e, quando usado, já abre só 1 transação em vez do loop cross-tenant — a
+tela Usuários resolve majoritariamente com mudança de frontend, sem endpoint novo pra listar usuários.
+
+**Backend:**
+| Arquivo | Mudança |
+|---|---|
+| `admin-dashboard.service.ts` | Alterado — remove o loop `mapWithConcurrency` sobre profissionais/agendamentos/pagamentos; MRR e `trialsAtivos` passam a vir do mesmo cache de `AdminSubscriptionsService` em vez de buscar `Subscription` de novo por tenant |
+| `admin-subscriptions.service.ts` | Alterado — expõe a contagem de barbearias por plano em cima do array que `list()` já lê do cache (sem nova leitura ao banco) |
+| `admin-tenants.service.ts` | Alterado — método novo `getStats(tenantId)`: 1 `runInTenantContext`, devolve agendamentos do mês, profissionais ativos, clientes cadastrados, série de 6 meses |
+| `admin-tenants.controller.ts` | Alterado — rota nova `GET /v1/admin/tenants/:id/stats` |
+| `test/admin/admin-tenants-stats.e2e-spec.ts` | **Novo** — RBAC (403 não-super_admin) + isolamento (stats de uma barbearia não vazam dado de outra) |
+
+**Frontend (`apps/admin-desenvolvain/src/App.jsx`):**
+| Componente | Mudança |
+|---|---|
+| `Dashboard` (~L426) | Alterado — remove cards de Barbeiros na rede/Agendamentos por mês/Churn; adiciona gráfico "Barbearias por Plano"; adiciona botão pra tela de drill-down |
+| `Usuarios` (~L1370) | Alterado — adiciona seletor de barbearia; só busca depois de selecionar; adiciona cards de stats + gráfico de 6 meses acima da lista |
+| `src/api/client.js` | Alterado — função nova `getTenantStats(tenantId)` |
+
+Sem extração pra arquivo novo por enquanto (os dois componentes continuam dentro de `App.jsx`, mesmo
+padrão do resto do arquivo — seção 10 do `CLAUDE.md` pede extração incremental, não reescrita).
+
+**Em aberto, preciso de decisão antes de implementar:**
+1. **Atividade recente** é uma das 6 telas lentas do relatório e **não está coberta por este sprint**
+   — hoje ela aparece embutida no Dashboard (painel lateral). A referência do Pizzaria não tem esse
+   painel na tela principal. Mantém do jeito que está (aceitando que continua lenta), tira do
+   Dashboard, ou vira parte deste sprint também?
+2. **Biblioteca de gráfico:** nenhum app do monorepo usa biblioteca de gráfico hoje (conferido —
+   `painel-barbearia`, `cliente-app` e este também não têm nenhuma). Os dois gráficos daqui (pizza de
+   ~5 fatias, barras de 6 meses) são simples o bastante pra desenhar à mão em SVG/CSS, sem dependência
+   nova — recomendo esse caminho por consistência com o resto do projeto (zero libs de UI em lugar
+   nenhum), mas confirma antes de eu decidir sozinho.
+3. **Critério de "profissionais ativos"/"clientes cadastrados"** no drill-down: só `active=true` (mesmo
+   filtro que o Dashboard atual já usa pra barbeiros) ou todos cadastrados, independente de status?
+
+### ⏳ Sprint 8 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
 
-### ⏳ Sprint 8 — Suporte — não iniciado
+### ⏳ Sprint 9 — Suporte — não iniciado
 `SupportTicket` com RLS normal. Spike técnico necessário: leitura cross-tenant sob RLS normal (mesmo
 padrão de soma por tenant já usado em todo o resto — não deveria precisar de `BYPASSRLS` dedicado
 como o plano original cogitava, já que o mesmo mecanismo de `TenantContextService` resolve isso desde
 o Sprint 2).
 
-### ⏳ Sprint 9 — Releases — parcialmente feito
+### ⏳ Sprint 10 — Releases — parcialmente feito
 Configurações já está pronta (ver acima). Falta só `Release` (changelog, leitura manual, inserido
 pelos devs a cada deploy).
 
-### ⏳ Sprint 10 — Deploy — não iniciado
+### ⏳ Sprint 11 — Deploy — não iniciado
 Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
 
@@ -187,7 +260,7 @@ pelo uso manual do painel — colisão de dado de ambiente, não bug).
 
 - **Repasses:** cálculo automático de receita/taxa continua fora de escopo até existir regra de
   negócio validada — o que existe hoje é só registro manual com a conta feita.
-- **Impersonação (Sprint 7):** ainda não implementada — maior risco de segurança do que falta
+- **Impersonação (Sprint 8):** ainda não implementada — maior risco de segurança do que falta
   construir, não pular a revisão dedicada quando chegar a vez.
 - **Upload de logo:** só client-side por enquanto (preview local), sem persistência — se isso virar
   prioridade, precisa de uma decisão de infra (Supabase Storage, presigned URL) antes de implementar,
@@ -204,4 +277,4 @@ painel — não há mais dado de exemplo/seed pré-carregado.
 
 ---
 
-*Atualizado em 18/08/2026 — Painel Master DesenvolvaIN.*
+*Atualizado em 16/10/2026 — Painel Master DesenvolvaIN.*
