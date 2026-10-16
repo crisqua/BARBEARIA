@@ -1412,6 +1412,7 @@ const Usuarios = () => {
   const [stats, setStats] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [busca, setBusca] = useState("");
   const [page, setPage] = useState(1);
 
@@ -1423,16 +1424,24 @@ const Usuarios = () => {
     if (!tenantId) {
       setStats(null);
       setUsuarios([]);
+      setError("");
       return;
     }
     setLoading(true);
+    setError("");
     setBusca("");
     setPage(1);
-    Promise.all([getTenantStats(tenantId), getUsers({ tenantId, pageSize: 200 })])
+    // pageSize máximo que o backend aceita (seção 8.4 do CLAUDE.md, paginação
+    // obrigatória) — busca e paginação da lista aqui são client-side (mesmo
+    // padrão da busca em Barbearias), então barbearias com mais de 100
+    // usuários cadastrados não mostram todos ainda. Aceitável por enquanto,
+    // registrado como limite conhecido.
+    Promise.all([getTenantStats(tenantId), getUsers({ tenantId, pageSize: 100 })])
       .then(([statsRes, usersRes]) => {
         setStats(statsRes);
         setUsuarios(usersRes.items);
       })
+      .catch((err) => setError(err.message || "Não foi possível carregar os dados dessa barbearia."))
       .finally(() => setLoading(false));
   }, [tenantId]);
 
@@ -1466,6 +1475,8 @@ const Usuarios = () => {
         </div>
       ) : loading ? (
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : error ? (
+        <ErrorBox>{error}</ErrorBox>
       ) : (
         <div>
           {/* Stats */}
