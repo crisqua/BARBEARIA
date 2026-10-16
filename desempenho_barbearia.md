@@ -8,17 +8,23 @@
 
 | Resultado | Rotas |
 |---|---|
-| ✅ Abaixo de 1s | 52 |
-| ⚠️ Abaixo de 1s isolada, mas acima de 1s com usuários simultâneos | 3 |
-| ❌ Acima de 1s (duas delas também falham com erro 500) | 8 |
+| ✅ Abaixo de 1s | 52 (+ 2 corrigidas depois do relatório original, ver nota) |
+| ⚠️ Abaixo de 1s isolada, mas acima de 1s com usuários simultâneos | 3 (causa já corrigida em 16/10 — bcrypt, ver 3.3; números de concorrência não remedidos) |
+| ❌ Acima de 1s (duas delas também falhavam com erro 500) | 6 — as 2 que falhavam com 500 (reativar profissional/serviço) foram corrigidas em 15/10/2026, ver seção 3.1 |
 | ❔ Não medida | 1 |
 
-Problemas principais:
+**Nota (16/10/2026):** este relatório é de 14/10/2026. Duas correções já aconteceram desde então —
+reativar profissional/serviço (bug + lentidão, seção 3.1) e bcrypt bloqueando o login sob concorrência
+(seção 3.3) — e as Sprints 7-9 do Painel Master (fora do escopo de "cliente barbearia", ver
+`admin-desenvolvain.md`) resolveram boa parte do item 2. As tabelas abaixo mantêm os números
+originais da medição, com uma nota de status onde já foi corrigido — não foram remedidas.
 
-1. **Reativar profissional ou serviço:** a rota estoura o timeout de 5s da transação, devolve erro 500 e **não reativa o recurso**. É um bug funcional, além de lentidão.
-2. **Listagens do Painel Master que juntam dados de todas as barbearias** (dashboard, atividade, usuários, assinaturas, pagamentos e repasses): o tempo cresce junto com o número de barbearias e passa de 1s com 55 barbearias.
-3. **Login, cadastro e criação de profissional:** passam isolados (~0,5s), mas, como o hash de senha é feito com `bcryptjs`, os pedidos são atendidos em fila. Com 5 logins simultâneos, o tempo chega a ~1,7s.
-4. **Região do banco:** se o Supabase estiver longe do Render (Oregon), por exemplo em São Paulo, até as rotas simples ficam perto de 1s.
+Problemas principais (status original de 14/10/2026 — ✅ junto do item indica correção já aplicada):
+
+1. ✅ **Reativar profissional ou serviço:** a rota estourava o timeout de 5s da transação, devolvia erro 500 e **não reativava o recurso**. Corrigido em 15/10/2026, ver seção 3.1.
+2. **Listagens do Painel Master que juntam dados de todas as barbearias** (dashboard, atividade, usuários, assinaturas, pagamentos e repasses): o tempo cresce junto com o número de barbearias e passa de 1s com 55 barbearias. Maior parte corrigida nas Sprints 7-9 (`admin-desenvolvain.md`), ver seção 3.2 — fora do escopo de "cliente barbearia" (é o Painel Master da incubadora, não as APIs que o `painel-barbearia`/`cliente-app` usam).
+3. ✅ **Login, cadastro e criação de profissional:** passavam isolados (~0,5s), mas, como o hash de senha era feito com `bcryptjs`, os pedidos eram atendidos em fila. Com 5 logins simultâneos, o tempo chegava a ~1,7s. Corrigido em 16/10/2026 (troca por `bcrypt` nativo), ver seção 3.3.
+4. **Região do banco:** se o Supabase estiver longe do Render (Oregon), por exemplo em São Paulo, até as rotas simples ficam perto de 1s. **Ainda não resolvido** — é o maior risco que sobra pras APIs de "cliente barbearia" hoje.
 
 ---
 
@@ -111,7 +117,7 @@ Os tempos são p95, em milissegundos.
 | `POST /v1/services` | Cria serviço | 8 | 121 | ✅ |
 | `PATCH /v1/services/:id` | Edita serviço | 11 | 147 | ✅ |
 | `PATCH /v1/services/:id` `{active:false}` | Inativa serviço (504 agendamentos → `needs_reschedule`) | 50 | 193 | ✅ |
-| `PATCH /v1/services/:id` `{active:true}` | **Reativa serviço** (reverte os agendamentos) | 651 | **5.026 → erro 500** | ❌ |
+| `PATCH /v1/services/:id` `{active:true}` | **Reativa serviço** (reverte os agendamentos) — **corrigido em 15/10/2026** (ver seção 3.1), números não remedidos | 651 | **5.026 → erro 500** (histórico) | ✅ corrigido, ver 3.1 |
 | `GET /v1/services/:id/professionals` | Profissionais que fazem o serviço | 12 | 183 | ✅ |
 
 ### Profissionais e horários
@@ -122,7 +128,7 @@ Os tempos são p95, em milissegundos.
 | `POST /v1/professionals` | Cria profissional | 351 | 475 | ⚠️ ok isolado, usa bcrypt (seção 3.3) |
 | `PATCH /v1/professionals/:id` | Edita profissional | 9 | 141 | ✅ |
 | `PATCH /v1/professionals/:id` `{active:false}` | Inativa profissional (370 agendamentos) | 17 | 166 | ✅ |
-| `PATCH /v1/professionals/:id` `{active:true}` | **Reativa profissional** | 469 | **5.021 → erro 500** | ❌ |
+| `PATCH /v1/professionals/:id` `{active:true}` | **Reativa profissional** — **corrigido em 15/10/2026** (ver seção 3.1), números não remedidos | 469 | **5.021 → erro 500** (histórico) | ✅ corrigido, ver 3.1 |
 | `GET /v1/professionals/:id/services` | Serviços do profissional | 8 | 141 | ✅ |
 | `POST /v1/professionals/:id/services` | Vincula serviço | 13 | 120 | ✅ |
 | `DELETE /v1/professionals/:id/services/:sid` | Desvincula serviço | 7 | 96 | ✅ |
@@ -181,6 +187,7 @@ Os tempos são p95, em milissegundos.
 - **Efeito:** com 20 ms de latência, 370 agendamentos já ultrapassam 5s. A rota devolve **500**, a transação inteira é desfeita e **o profissional ou serviço continua inativo**, com os agendamentos ainda em `needs_reschedule`. O admin fica sem conseguir reativar.
 - **Limite prático:** para ficar abaixo de 1s com RTT de 20 ms, cabem ~45 agendamentos futuros. No local, o mesmo erro aconteceu com ~4.400.
 - **Direção de correção:** resolver a reversão com um único `UPDATE ... WHERE NOT EXISTS (conflito)` em SQL. Mantém a mesma regra (não sobrescrever um horário já ocupado, índice da seção 5.3) e faz uma só ida ao banco.
+- **Status:** ✅ corrigido em 15/10/2026 (commit `828cc43`) — `revertNeedsReschedule` (`apps/api/src/common/revert-needs-reschedule.util.ts`) trocou o loop `for` com 1 `UPDATE` por agendamento por exatamente a direção de correção acima: um único `UPDATE ... WHERE NOT EXISTS`, resolvido pelo banco numa só viagem de rede, mantendo a mesma regra de não sobrescrever um horário ocupado nesse meio-tempo. Correção verificada por leitura de código (não tem mais loop, não tem mais como estourar os 5s do Prisma não importa o volume de agendamentos); os números da tabela acima (5.026ms/5.021ms → erro 500) **não foram remedidos** depois da correção — ficam só como registro do problema original que motivou a mudança.
 
 ### 3.2 Agregações do Painel Master crescem com o número de barbearias
 - **Onde:** `admin-dashboard.service.ts`, `admin-activity.service.ts`, `admin-users.service.ts`, `admin-subscriptions.service.ts`, `admin-payments.service.ts`, `admin-payouts.service.ts`.

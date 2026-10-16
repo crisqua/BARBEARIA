@@ -29,11 +29,27 @@ obrigatória por campo com bloqueio de avanço entre passos.
 **Ainda mock/não construído:** Suporte, Releases, impersonação ("Acessar como admin"), deploy em
 produção.
 
-**Planejado, escopo fechado, implementação não iniciada:** Sprint 7 (seção 6) — Dashboard e Usuários
-deixam de somar dado de todas as barbearias cross-tenant, passam a mostrar visão leve da plataforma +
-detalhe sob demanda por barbearia. Motivado por `desempenho_barbearia.md` (14/10/2026), que mediu 6
-telas do painel passando de 1s com volume realista de barbearias. Validado com protótipo visual
-(canvas separado) antes de mexer no código real.
+**Concluídas em 16/10/2026 — Sprints 7, 8 e 9** (seção 6): Dashboard, Usuários, Financeiro e
+Assinaturas deixaram de somar dado de todas as barbearias cross-tenant, passaram a mostrar visão leve
+da plataforma + detalhe sob demanda por barbearia selecionada. Motivado por `desempenho_barbearia.md`
+(14/10/2026), que mediu 6 telas do painel passando de 1s com volume realista de barbearias. Cada
+sprint validado com protótipo visual (canvas separado) antes de mexer no código real, implementado em
+fases, testado (e2e + build) e confirmado em homolog.
+
+**Fora da sequência de sprints, mesma motivação de desempenho:** tela **Barbearias** ganhou paginação
+e busca reais no servidor (antes buscava até 50 de uma vez e tratava como lista completa, sem busca
+além da página carregada) — não é um item numerado, é um ajuste pontual de uma tela que já existia
+desde a Sprint 1.
+
+**Sprint 10 (seção 6) — aguardando decisão, não iniciada:** eliminar o último loop cross-tenant que
+sobrou (`getPerTenantSubscriptions`, base do MRR/Assinaturas) via função Postgres `SECURITY DEFINER`
+— primeira exceção de RLS do projeto fora de `tenants`. Desenho pronto, falta confirmação explícita
+antes de implementar.
+
+**Sprint 11 (seção 6) — aguardando decisão, não iniciada:** região do banco longe da API em homolog
+(Render Oregon × Supabase Ohio) — confirmada como causa raiz de nenhuma API de `painel-barbearia`/
+`cliente-app` se manter abaixo de 1s sob carga, nem as mais simples. Decisão de infra (mover um dos
+dois serviços de região), usuário optou por avaliar depois.
 
 ## 3. Arquitetura
 
@@ -59,8 +75,8 @@ compartilhado, não Context — funciona porque todo componente do arquivo lê `
 | `Payout` (Repasse) | Sim | **Normal** | ✅ Sprint 6 |
 | `PlatformSettings` | Não | Isenta (singleton global) | ✅ feature extra |
 | `PlatformActivity` | Sim | **Normal** | ✅ feature extra |
-| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 11 |
-| `Release` | Não | Isenta (planejado) | ⏳ Sprint 12 (parcial) |
+| `SupportTicket` | Sim | Normal (planejado) | ⏳ Sprint 13 |
+| `Release` | Não | Isenta (planejado) | ⏳ Sprint 14 (parcial) |
 
 ### Mudança de decisão registrada durante a execução (Sprint 5)
 
@@ -146,7 +162,7 @@ dessincronizar): `tenant_created`/`tenant_suspended`/`tenant_reactivated` (`Admi
 Helper único (`activity-log.util.ts`) grava e formata os valores em R$ pt-BR. Leitura cross-tenant
 soma por tenant via `TenantContextService`, mesmo padrão do resto do painel. **Ficam de fora de
 propósito:** "Trial expirado" e "Suporte aberto" — nenhum dos dois tem regra de negócio ou módulo
-implementado ainda (cron de expiração e `SupportTicket` do Sprint 11, respectivamente).
+implementado ainda (cron de expiração e `SupportTicket` do Sprint 13, respectivamente).
 
 ### ✅ Feature extra (fora da sequência) — Validação obrigatória no Onboarding
 O wizard de Nova Barbearia deixava avançar de passo (via botão "Próximo" ou clicando direto numa
@@ -159,7 +175,7 @@ mesmo nível de validação client-side que o resto do form — o backend contin
 verdade via `class-validator` no DTO). `Input`/`Select` (componentes compartilhados, ~17 usos no
 arquivo) ganharam prop `error` opcional, retrocompatível.
 
-### ⏳ Sprint 7 — Performance: Dashboard e Usuários passam a ser por barbearia — planejado, escopo fechado
+### ✅ Sprint 7 — Performance: Dashboard e Usuários passam a ser por barbearia — concluído (16/10/2026)
 
 **Motivação.** `desempenho_barbearia.md` (14/10/2026, relatório gerado em sessão separada via app)
 mediu as 6 telas do painel que somam dado de **todas** as barbearias — Dashboard, Atividade,
@@ -265,7 +281,7 @@ fictício — usado pra validar o layout e fechar as decisões acima antes de me
 7. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual no
    painel local se o backend estiver de pé.
 
-### ⏳ Sprint 8 — Financeiro por barbearia (drill-down, mesmo padrão da Sprint 7) — planejado
+### ✅ Sprint 8 — Financeiro por barbearia (drill-down, mesmo padrão da Sprint 7) — concluído (16/10/2026)
 
 **Motivação:** o relatório de desempenho (`desempenho_barbearia.md`, item 3.2) lista `GET
 /v1/admin/payments` entre as telas cross-tenant que crescem com o número de barbearias (1.133ms sem
@@ -351,7 +367,7 @@ filtro Mês/Ano sem campo novo.
 5. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual
    no painel local.
 
-### ⏳ Sprint 9 — Assinaturas por barbearia (drill-down, mesmo padrão da Sprint 7/8) — planejado
+### ✅ Sprint 9 — Assinaturas por barbearia (drill-down, mesmo padrão da Sprint 7/8) — concluído (16/10/2026)
 
 **Motivação:** mesmo problema de `GET /v1/admin/payments` antes da Sprint 8 — `GET
 /v1/admin/subscriptions` (`admin-subscriptions.service.ts`, método `list()`) faz um loop cross-tenant
@@ -458,21 +474,133 @@ Sem migration — nenhum campo novo de schema, só contagem em cima do que já e
    compartilhado antes de navegar, mesmo padrão do botão de Financeiro da Sprint 8.
 6. **Verificação** — suíte e2e completa (`--runInBand`), zero regressão esperada; smoke test manual.
 
-### ⏳ Sprint 10 — Impersonação ("Acessar como admin") — não iniciado
+### ⏳ Sprint 10 — Performance do Dashboard/Assinaturas: função SECURITY DEFINER — aguardando decisão
+
+**Motivação:** mesmo depois das Sprints 7-9 (que já eliminaram os loops cross-tenant de
+Dashboard/Usuários/Financeiro/Pagamentos/Assinaturas), continua sobrando **um** loop cross-tenant:
+`AdminSubscriptionsService.getPerTenantSubscriptions()` — base de `getOverview()`, usado tanto pelo
+Dashboard quanto pela tela Assinaturas. Com RLS forçado em `subscriptions` e a role de runtime
+(`barberaria_app`) sendo `NOBYPASSRLS` de propósito, ler a assinatura de cada barbearia exige abrir
+**uma transação por tenant** (`runInTenantContext`, `mapWithConcurrency` 5 por vez) — com 56
+barbearias em homolog, isso mede 5-6s toda vez que o cache de 90s está frio (primeira carga depois
+de um deploy, já que homolog roda cache em memória, sem Redis — ver seção 8). Achado ao investigar
+por que o Dashboard "demora na primeira vez" (conversa de 16/10/2026).
+
+**Decisão de produto/segurança, ainda não confirmada:** a correção de verdade (1 query em vez de 56)
+exige uma **função Postgres `SECURITY DEFINER`** — primeira exceção de bypass de RLS do projeto além
+da já documentada em `tenants` (seção 6.4 do `CLAUDE.md`). Duas alternativas mais fracas foram
+descartadas por não resolverem a causa raiz, só escondê-la ou adiá-la:
+- Aumentar a concorrência do `mapWithConcurrency` (5 → 10-15): reduz o tempo proporcionalmente, mas
+  tem teto (estoura o pool de conexões do Supavisor) e não elimina o problema, só ameniza.
+- Aquecer o cache no boot do servidor: esconde o custo do primeiro usuário, mas continua pagando as
+  56 transações, só que em background — não é correção, é disfarce.
+
+**Desenho da função** (detalhado na conversa de 16/10/2026, não implementado ainda):
+
+```sql
+-- Role dedicada, SEM login, só com BYPASSRLS — não reaproveita o superuser de
+-- migration (DIRECT_URL). Minimiza o raio de impacto: se a função tiver um bug,
+-- o pior cenário é "lê mais do que devia", nunca escreve/apaga em tabela nenhuma.
+CREATE ROLE barberaria_admin_reader NOLOGIN NOSUPERUSER BYPASSRLS;
+
+CREATE OR REPLACE FUNCTION admin_subscriptions_overview()
+RETURNS TABLE (
+  tenant_id uuid, tenant_name varchar, tenant_slug varchar,
+  subscription_status varchar, plan_code varchar, plan_name varchar, plan_price_cents integer
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT t.id, t.name, t.slug, s.status, p.code, p.name, p.price_cents
+  FROM tenants t
+  LEFT JOIN subscriptions s ON s.tenant_id = t.id
+  LEFT JOIN plans p ON p.id = s.plan_id
+  ORDER BY t.created_at DESC;
+$$;
+
+ALTER FUNCTION admin_subscriptions_overview() OWNER TO barberaria_admin_reader;
+REVOKE ALL ON FUNCTION admin_subscriptions_overview() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION admin_subscriptions_overview() TO barberaria_app;
+```
+
+Só `SELECT` — nunca escreve, de propósito (um bypass de RLS numa função que também gravasse seria um
+risco bem maior, poderia escrever na barbearia errada). Chamada via `prisma.$queryRaw` dentro de
+`getPerTenantSubscriptions()`, fora de qualquer `runInTenantContext` (mesma categoria de leitura
+direta que `tenants` já usa, seção 6.4) — resto do método (cache de 90s, agregações de `getOverview()`)
+não muda.
+
+**Arquivos (se confirmado):**
+
+| Arquivo | Mudança |
+|---|---|
+| Migration nova | `CREATE ROLE barberaria_admin_reader`, a função, grants — com comentário explicando a exceção |
+| `admin-subscriptions.service.ts` | `getPerTenantSubscriptions()` troca o loop por 1 `$queryRaw` |
+| `CLAUDE.md` / `admin-desenvolvain.md` | Documentar como segunda exceção de RLS do projeto, ao lado de `tenants` |
+| CI (seção 5.5) | Sem mudança necessária — o gate verifica `relrowsecurity` de tabela, isso não mexe em RLS de tabela nenhuma |
+
+**Em aberto — decidir antes de implementar:** confirmar que esse é o caminho (função
+`SECURITY DEFINER` com role dedicada) e não uma das alternativas mais fracas — é a primeira vez que o
+projeto introduz um bypass de RLS fora de `tenants`, decisão que o próprio `CLAUDE.md` pede pra
+parar e confirmar antes de agir (seção 10). Não iniciado até essa confirmação.
+
+### ⏳ Sprint 11 — Infra: região do banco longe da API (homolog) — aguardando decisão
+
+**Motivação:** avaliação de desempenho das APIs de "cliente barbearia" (`painel-barbearia` +
+`cliente-app` — não o Painel Master, que é escopo das Sprints 7-10) feita em 16/10/2026, medindo
+direto contra o homolog real (não só o benchmark local simulado de `desempenho_barbearia.md`).
+Resultado, com dyno já aquecido (sem cold start):
+
+| Rota | Isolada | 5 simultâneas (p50 / máx) | < 1s? |
+|---|---|---|---|
+| `POST /v1/auth/login` | 2,4-2,8s | **7,10s / 8,48s** | ❌ |
+| `GET /v1/services` | — | 1,43s / 1,48s | ❌ |
+| `GET /v1/professionals/:id/availability` | — | 1,16s / 1,51s | ❌ |
+| `GET /v1/professionals` | — | 1,10s / 1,14s | ❌ |
+| `GET /v1/appointments` | — | 0,75s / 1,20s | ❌ (mediana ok, pico estoura) |
+| `GET /v1/users/me` | — | 0,63s / 1,39s | ❌ (mediana ok, pico estoura) |
+| `GET /v1/tenants/me` | 0,54s | — | ✅ |
+
+**Nenhuma API do `cliente-app` se mantém confiavelmente abaixo de 1s sob carga, nem com só 5
+requisições simultâneas** — o mesmo nível mínimo que o benchmark do próprio projeto usa.
+
+**Causa raiz confirmada:** `apps/api/render.yaml` tem `region: oregon` (EUA, costa oeste); o Supabase
+de homolog está em `us-east-2`, Ohio (EUA, costa leste) — travessia real costa-a-costa, pior que o
+cenário "produção estimada" (20ms RTT) que o `desempenho_barbearia.md` original usou pra dar `✅` na
+maioria das rotas. Já era um risco **registrado** nesse relatório (seção 3.5, "a região do banco é
+decisiva") — essa medição confirma que é real, não hipotético, e que piora sob concorrência (CPU
+compartilhada do plano Render + pool de conexões do Supabase, não só rede).
+
+**Amplificador arquitetural, não é bug:** cada rota de tenant faz 4-5 idas e voltas ao banco (abre
+transação, `set_config` do RLS, consulta, fecha — mecanismo de segurança da seção 6.3 do `CLAUDE.md`,
+não deve ser removido). Com RTT baixo isso é barato; com a distância real Oregon↔Ohio, multiplica o
+problema.
+
+**Achado à parte, não depende da região:** o login sob concorrência (7-8,5s) pode também esbarrar no
+`UV_THREADPOOL_SIZE` padrão do Node (4 threads) — bcrypt nativo roda nessas threads, a 5ª chamada
+simultânea fica na fila. Vale investigar como ajuste de configuração independente da decisão de
+região.
+
+**Em aberto — decidir antes de implementar:** mover um dos dois serviços pra mesma região (Render
+pra perto do Supabase, ou vice-versa). Usuário optou por avaliar depois ("verei depois", 16/10/2026)
+— não iniciado. Relevante também pra Produção, que ainda nem foi provisionada (seção 9) — a mesma
+decisão de região deveria valer desde a criação do ambiente de Produção, não só corrigir homolog.
+
+### ⏳ Sprint 12 — Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
 
-### ⏳ Sprint 11 — Suporte — não iniciado
+### ⏳ Sprint 13 — Suporte — não iniciado
 `SupportTicket` com RLS normal. Spike técnico necessário: leitura cross-tenant sob RLS normal (mesmo
 padrão de soma por tenant já usado em todo o resto — não deveria precisar de `BYPASSRLS` dedicado
 como o plano original cogitava, já que o mesmo mecanismo de `TenantContextService` resolve isso desde
 o Sprint 2).
 
-### ⏳ Sprint 12 — Releases — parcialmente feito
+### ⏳ Sprint 14 — Releases — parcialmente feito
 Configurações já está pronta (ver acima). Falta só `Release` (changelog, leitura manual, inserido
 pelos devs a cada deploy).
 
-### ⏳ Sprint 13 — Deploy — não iniciado
+### ⏳ Sprint 15 — Deploy — não iniciado
 Deploy do `admin-desenvolvain` na Vercel, domínio `admin.barberaria.app`, `CORS_ORIGIN` de produção
 atualizado na API.
 
@@ -501,7 +629,7 @@ pelo uso manual do painel — colisão de dado de ambiente, não bug).
   do protótipo visual original (que tinha telas de loja/comissão/financeiro avançado), implementada
   no Sprint 6 sem confrontar contra o modelo de negócio real na hora. **Decisão do usuário: deixar
   como está por enquanto**, só registrado — não remover nem corrigir até decisão futura.
-- **Impersonação (Sprint 10):** ainda não implementada — maior risco de segurança do que falta
+- **Impersonação (Sprint 12):** ainda não implementada — maior risco de segurança do que falta
   construir, não pular a revisão dedicada quando chegar a vez.
 - **Financeiro cross-tenant (`GET /v1/admin/payments`):** decidido remover na Sprint 8 (não manter) —
   ver seção 6, Sprint 8, lista de arquivos afetados pela remoção (controller, service, teste,
