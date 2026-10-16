@@ -796,6 +796,16 @@ de fora `LoginScreen`, `RegisterScreen` e a tela de "Carregando.../erro de tenan
 sessão) — confirmado por varredura completa de todo `<Phone>` no arquivo, nenhuma tela real ficou
 pra trás.
 
+**Ajuste pedido pelo usuário depois de ver no ar (16/10/2026):** hambúrguer movido pra esquerda em
+`BackHeader` (era à direita do título; agora segue o mesmo padrão da Início, à esquerda) e a seta "←"
+de voltar **removida de todo lugar** — a navegação passa a ser só pelo menu lateral. `BackHeader`
+perdeu o prop `onBack` (não é mais usado em lugar nenhum). Efeito colateral avisado ao usuário e
+aceito por ele, a validar: em 3 telas a seta não voltava pra Início, voltava pra um passo específico
+de um fluxo ("Escolha o Profissional" → "Escolha o Serviço"; "Horário" ao remarcar → "Meus
+Agendamentos"; "Meus Históricos"/"Confirmar Assinatura" → suas telas-mãe) — sem a seta, essas telas só
+saem pelos 5 destinos fixos do `Drawer`, não pro "passo anterior exato" (na prática dá no mesmo na
+maioria dos casos, já que "Agendar Horário" do menu já recomeça do zero em "Escolha o Serviço").
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
