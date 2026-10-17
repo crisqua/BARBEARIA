@@ -997,7 +997,9 @@ export default function App() {
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Carregando profissionais...</div>
         )}
         {!professionalsLoading && serviceProfessionals.length === 0 && (
-          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum profissional disponível para esse serviço.</div>
+          <div style={{ background: "#F5A62318", border: "1px solid #F5A62355", borderRadius: 8, padding: "14px 12px", fontSize: 12, color: "#F5A623", textAlign: "center", fontWeight: 600 }}>
+            Nenhum profissional disponível para esse serviço.
+          </div>
         )}
         {serviceProfessionals.map((p) => (
           <div key={p.id} onClick={() => { setSelectedPro(p); setSelectedSlot(null); setScreen("horario"); }} style={{
