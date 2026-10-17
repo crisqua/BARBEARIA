@@ -655,7 +655,7 @@ export default function App() {
             </div>
           ) : (
             <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
-              <div style={{ fontSize: 12.5, color: T.text }}>Nenhum agendamento futuro.</div>
+              <div style={{ fontSize: 12.5, color: T.text, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Nenhum agendamento futuro.</div>
             </div>
           )}
 
@@ -791,7 +791,7 @@ export default function App() {
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: T.gold, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Ativos</div>
-            <div onClick={() => setScreen("meus-historicos")} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Meus Históricos</div>
+            <div onClick={() => setScreen("meus-historicos")} style={{ fontSize: 11, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Meus Históricos</div>
           </div>
 
           {upcoming.length > 0 ? (
@@ -827,7 +827,7 @@ export default function App() {
               );
             })
           ) : (
-            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px" }}>Nenhum agendamento futuro.</div>
+            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Nenhum agendamento futuro.</div>
           )}
         </div>
       </Phone>
