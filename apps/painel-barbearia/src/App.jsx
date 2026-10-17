@@ -118,12 +118,30 @@ const formatPhoneMask = (value) => {
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_FULL = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
+// "Hoje" nos mesmos termos em que starts_at é armazenado: hora tratada como hora local
+// da barbearia (fixo America/Sao_Paulo), sem conversão (ver CLAUDE.md, "Timezone por
+// tenant"). Usar `new Date()` + `setUTCHours(0,0,0,0)` direto ancora no dia UTC, não no
+// dia de Brasília — depois das 21h (horário de Brasília, quando já virou o dia seguinte
+// em UTC), isso faz "hoje" pular um dia adiantado e um agendamento de amanhã aparecer
+// na agenda de hoje. Mesmo helper já usado no app-cliente/backend.
+const nowInBarbershopTime = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (type) => Number(parts.find((p) => p.type === type).value);
+  return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+};
+
 function nextDays(count = 7) {
   const days = [];
+  const base = new Date(nowInBarbershopTime());
+  base.setUTCHours(0, 0, 0, 0);
   for (let i = 0; i < count; i++) {
-    const d = new Date();
+    const d = new Date(base);
     d.setUTCDate(d.getUTCDate() + i);
-    d.setUTCHours(0, 0, 0, 0);
     days.push(d);
   }
   return days;
@@ -408,7 +426,7 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const reload = () => {
-    const from = new Date();
+    const from = new Date(nowInBarbershopTime());
     from.setUTCHours(0, 0, 0, 0);
     const to = new Date(from.getTime() + 24 * 60 * 60_000);
     return Promise.all([
@@ -446,7 +464,7 @@ function Dashboard() {
     .filter((a) => svcName(a.serviceId).toLowerCase().includes(filterServico.trim().toLowerCase()))
     .filter((a) => proName(a.professionalId).toLowerCase().includes(filterProfissional.trim().toLowerCase()))
     .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
-  const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
 
   return (
     <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
