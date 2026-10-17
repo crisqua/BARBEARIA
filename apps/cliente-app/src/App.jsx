@@ -622,9 +622,8 @@ export default function App() {
               <div style={{ fontSize: 10, color: T.gold, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tenant.name}</div>
               {user && <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginTop: 1 }}>Olá, {user.name}</div>}
             </div>
-            {/* Clicável, abre o mesmo Drawer do hambúrguer — é lá que "Sair" já mora, sem
-                duplicar lógica de logout num menu separado só pro avatar. */}
-            <div onClick={() => setMenuOpen(true)} style={{ cursor: "pointer" }}>
+            {/* Clicável: atalho direto de logout (não abre o menu). */}
+            <div onClick={handleLogout} style={{ cursor: "pointer" }}>
               <Avatar name={user?.name || "Cliente"} size={34} T={T} />
             </div>
           </div>

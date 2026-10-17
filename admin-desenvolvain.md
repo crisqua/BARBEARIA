@@ -806,13 +806,14 @@ Agendamentos"; "Meus Históricos"/"Confirmar Assinatura" → suas telas-mãe) �
 saem pelos 5 destinos fixos do `Drawer`, não pro "passo anterior exato" (na prática dá no mesmo na
 maioria dos casos, já que "Agendar Horário" do menu já recomeça do zero em "Escolha o Serviço").
 
-**Pendente de validação (16/10/2026):** avatar da Início virou clicável, abrindo o mesmo `Drawer` do
-hambúrguer (commit `76366d2`) — usuário reportou "não aconteceu nada ao clicar" ao testar em
-homolog. Verificado do lado do servidor: o deploy mais recente já estava no ar (bundle com
-~5min de idade, batendo com o commit) e o código revisado está correto (mesmo padrão já usado no
-hambúrguer, que funciona). Suspeita mais provável: cache do navegador do usuário, não stale deploy
-nem bug de código — mas **não confirmado ainda**. Retestar com hard refresh antes de considerar
-resolvido; se persistir depois disso, investigar como bug real.
+**Resolvido (16/10/2026):** avatar da Início virou clicável na primeira versão (commit `76366d2`),
+abrindo o mesmo `Drawer` do hambúrguer — usuário reportou "não aconteceu nada ao clicar" em homolog;
+investigação server-side (deploy atual, bundle batendo com o commit) não achou causa, suspeita era
+cache do navegador. **Causa real, achada na validação seguinte:** não era cache nem bug — era
+comportamento errado por decisão de design. Clicar no avatar abrir o menu lateral (que por sua vez
+tem "Sair" dentro) é indireto; o usuário esperava que o avatar fosse um atalho **direto** de logout,
+padrão mais comum pra esse tipo de ícone. Corrigido: clique no avatar agora chama `handleLogout`
+direto, sem abrir o `Drawer`.
 
 ## 7. Testes
 
