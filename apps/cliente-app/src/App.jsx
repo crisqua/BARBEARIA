@@ -637,7 +637,7 @@ export default function App() {
           </div>
 
           {/* Próximo agendamento, em destaque */}
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Próximo agendamento</div>
+          <div style={{ fontSize: 11, color: T.text, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Próximo agendamento</div>
           {proximo ? (
             <div style={{ background: `linear-gradient(135deg, ${T.gold}18, ${T.gold}08)`, border: `1.5px solid ${T.gold}55`, borderRadius: 14, padding: 18, marginBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
