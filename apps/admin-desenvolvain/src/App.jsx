@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createPlan,
   createTenant,
@@ -171,6 +171,83 @@ const Select = ({ label, value, onChange, options, error, disabled = false }) =>
     {error && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{error}</div>}
   </div>
 );
+
+// Combo de barbearia com busca no backend (não um filtro sobre uma lista já
+// carregada) — um `<select>` populado com `listTenants()` sem busca só traz as
+// mais recentes; barbearias antigas (como o tenant piloto "Homologador") ficam
+// fora quando há muitos tenants de teste mais novos poluindo a lista (risco
+// documentado no CLAUDE.md: a suíte test:e2e compartilha o banco de homolog).
+// Mesmo padrão de debounce (300ms) já usado na busca da tela Barbearias.
+const TenantPicker = ({ label, value, displayName, onSelect, placeholder = "Buscar barbearia…" }) => {
+  const [query, setQuery] = useState("");
+  const [options, setOptions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    const t = setTimeout(() => {
+      listTenants(1, 20, query.trim() || undefined)
+        .then((res) => setOptions(res.items))
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, open]);
+
+  useEffect(() => {
+    const onClickOutside = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const pick = (tenant) => {
+    setQuery("");
+    setOpen(false);
+    onSelect(tenant);
+  };
+
+  return (
+    <div ref={boxRef} style={{ position: "relative", minWidth: 220 }}>
+      {label && (
+        <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {label}
+        </div>
+      )}
+      <input
+        value={open ? query : (displayName || "")}
+        onChange={(e) => setQuery(e.target.value)}
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        placeholder={placeholder}
+        style={{ width: "100%", background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+      />
+      {open && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, maxHeight: 240, overflowY: "auto", zIndex: 50, boxShadow: "0 8px 24px #00000066" }}>
+          {loading && <div style={{ padding: "10px 14px", fontSize: 12, color: T.muted }}>Buscando…</div>}
+          {!loading && options.length === 0 && (
+            <div style={{ padding: "10px 14px", fontSize: 12, color: T.muted }}>Nenhuma barbearia encontrada.</div>
+          )}
+          {!loading && options.map((t) => (
+            <div
+              key={t.id}
+              onClick={() => pick(t)}
+              style={{
+                padding: "10px 14px", fontSize: 13, cursor: "pointer",
+                color: t.id === value ? T.gold : T.text,
+                background: t.id === value ? T.gold + "14" : "transparent",
+              }}
+            >
+              {t.name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Card usado como alternativa à linha de tabela no celular — mesmo cartão
 // visual em qualquer tela que precise de uma versão empilhada.
@@ -1296,7 +1373,7 @@ function getPaymentFormErrors(form) {
 }
 
 const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }) => {
-  const [tenants, setTenants] = useState([]);
+  const [selectedTenant, setSelectedTenant] = useState(null);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1309,7 +1386,14 @@ const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }
   const [filterMonth, setFilterMonth] = useState("");
   const [filterYear, setFilterYear] = useState("");
 
-  useEffect(() => { listTenants().then((res) => setTenants(res.items)); }, []);
+  // Cobre o caso de chegar aqui com um tenantId já definido vindo de outra tela
+  // (ex: "Ver financeiro desta barbearia →") — o TenantPicker só preenche o nome
+  // quando a escolha acontece aqui mesmo.
+  useEffect(() => {
+    if (!tenantId) { setSelectedTenant(null); return; }
+    if (selectedTenant?.id === tenantId) return;
+    getTenant(tenantId).then(setSelectedTenant).catch(() => {});
+  }, [tenantId]);
 
   const load = (id) => getTenantPayments(id, { pageSize: 100 }).then((res) => setPayments(res.items));
 
@@ -1329,7 +1413,6 @@ const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }
       .finally(() => setLoading(false));
   }, [tenantId]);
 
-  const selectedTenant = tenants.find((t) => t.id === tenantId);
   const currentYear = new Date().getFullYear();
   const yearOptions = [currentYear - 1, currentYear, currentYear + 1].map((y) => ({ value: String(y), label: String(y) }));
 
@@ -1393,10 +1476,10 @@ const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }
           <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Financeiro</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Escolha uma barbearia pra ver os pagamentos dela</div>
         </div>
-        <Select
+        <TenantPicker
           value={tenantId ?? ""}
-          onChange={(e) => setTenantId(e.target.value)}
-          options={[{ value: "", label: "Selecione uma barbearia…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]}
+          displayName={selectedTenant?.name}
+          onSelect={(t) => { setTenantId(t.id); setSelectedTenant(t); }}
         />
       </div>
 
@@ -1552,17 +1635,13 @@ function buildBars(monthlyAppointments) {
 const USUARIOS_PAGE_SIZE = 10;
 
 const Usuarios = ({ setActive, setFinanceiroTenantId, setAssinaturasTenantId }) => {
-  const [tenants, setTenants] = useState([]);
+  const [selectedTenant, setSelectedTenant] = useState(null);
   const [tenantId, setTenantId] = useState("");
   const [stats, setStats] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
   const [error, setError] = useState("");
   const [busca, setBusca] = useState("");
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    listTenants().then((res) => setTenants(res.items));
-  }, []);
 
   useEffect(() => {
     if (!tenantId) {
@@ -1601,7 +1680,6 @@ const Usuarios = ({ setActive, setFinanceiroTenantId, setAssinaturasTenantId }) 
   const currentPage = Math.min(page, totalPages);
   const pageUsuarios = filtrados.slice((currentPage - 1) * USUARIOS_PAGE_SIZE, currentPage * USUARIOS_PAGE_SIZE);
   const bars = stats ? buildBars(stats.monthlyAppointments) : [];
-  const selectedTenant = tenants.find((t) => t.id === tenantId);
 
   return (
     <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
@@ -1610,13 +1688,10 @@ const Usuarios = ({ setActive, setFinanceiroTenantId, setAssinaturasTenantId }) 
           <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Usuários</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Escolha uma barbearia pra ver os usuários e a operação dela</div>
         </div>
-        <Select
+        <TenantPicker
           value={tenantId}
-          onChange={(e) => setTenantId(e.target.value)}
-          options={[
-            { value: "", label: "Selecione uma barbearia…" },
-            ...tenants.map((t) => ({ value: t.id, label: t.name })),
-          ]}
+          displayName={selectedTenant?.name}
+          onSelect={(t) => { setTenantId(t.id); setSelectedTenant(t); }}
         />
       </div>
 
@@ -1837,7 +1912,7 @@ const Releases = () => {
 // TELA: ASSINATURAS (por barbearia — Sprint 9, admin-desenvolvain.md)
 // ────────────────────────────────────────────────────────
 const Assinaturas = ({ tenantId, setTenantId }) => {
-  const [tenants, setTenants] = useState([]);
+  const [selectedTenant, setSelectedTenant] = useState(null);
   const [planos, setPlanos] = useState([]);
   const [overview, setOverview] = useState(null);
   // undefined = ainda não buscou pra esse tenantId | null = buscou, confirmado sem assinatura (404) |
@@ -1853,12 +1928,20 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
   const [acting, setActing] = useState(false);
 
   useEffect(() => {
-    Promise.all([listTenants(), listPlans(), getSubscriptionsOverview()]).then(([tenantsRes, plansRes, overviewRes]) => {
-      setTenants(tenantsRes.items);
+    Promise.all([listPlans(), getSubscriptionsOverview()]).then(([plansRes, overviewRes]) => {
       setPlanos(plansRes.items.filter((p) => p.active));
       setOverview(overviewRes);
     });
   }, []);
+
+  // Cobre o caso de chegar aqui com um tenantId já definido vindo de outra tela
+  // (ex: "Ver assinatura desta barbearia →") — o TenantPicker só preenche o nome
+  // quando a escolha acontece aqui mesmo.
+  useEffect(() => {
+    if (!tenantId) { setSelectedTenant(null); return; }
+    if (selectedTenant?.id === tenantId) return;
+    getTenant(tenantId).then(setSelectedTenant).catch(() => {});
+  }, [tenantId]);
 
   const reloadOverview = () => getSubscriptionsOverview().then(setOverview);
 
@@ -1875,8 +1958,6 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
         else setError(err.message || "Não foi possível carregar a assinatura dessa barbearia.");
       });
   }, [tenantId]);
-
-  const selectedTenant = tenants.find((t) => t.id === tenantId);
 
   const criarAssinatura = async () => {
     if (!novoPlanoId) return;
@@ -1928,10 +2009,10 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
           <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Assinaturas</div>
           <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Veja e altere o plano de uma barbearia</div>
         </div>
-        <Select
+        <TenantPicker
           value={tenantId ?? ""}
-          onChange={(e) => setTenantId(e.target.value)}
-          options={[{ value: "", label: "Selecione uma barbearia…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]}
+          displayName={selectedTenant?.name}
+          onSelect={(t) => { setTenantId(t.id); setSelectedTenant(t); }}
         />
       </div>
 
@@ -2108,7 +2189,7 @@ const emptyPayoutForm = { tenantId: "", period: "", grossReais: "", feePct: "" }
 
 const Repasses = () => {
   const [payouts, setPayouts] = useState([]);
-  const [tenants, setTenants] = useState([]);
+  const [formTenant, setFormTenant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyPayoutForm);
@@ -2117,14 +2198,13 @@ const Repasses = () => {
   const [error, setError] = useState("");
 
   const load = () =>
-    Promise.all([listPayouts(), listTenants()]).then(([payoutsRes, tenantsRes]) => {
+    listPayouts().then((payoutsRes) => {
       setPayouts(payoutsRes.items);
-      setTenants(tenantsRes.items);
     });
 
   useEffect(() => { load().finally(() => setLoading(false)); }, []);
 
-  const abrirForm = () => { setForm(emptyPayoutForm); setError(""); setShowForm(true); };
+  const abrirForm = () => { setForm(emptyPayoutForm); setFormTenant(null); setError(""); setShowForm(true); };
 
   const grossCentsPreview = Math.round(parseFloat((form.grossReais || "0").replace(",", ".")) * 100) || 0;
   const feePctPreview = parseFloat((form.feePct || "0").replace(",", ".")) || 0;
@@ -2184,8 +2264,8 @@ const Repasses = () => {
           {error && <div style={{ marginBottom: 14 }}><ErrorBox>{error}</ErrorBox></div>}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
             <div style={{ flex: 2, minWidth: 180 }}>
-              <Select label="Barbearia" value={form.tenantId} onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
-                options={[{ value: "", label: "Selecione…" }, ...tenants.map((t) => ({ value: t.id, label: t.name }))]} />
+              <TenantPicker label="Barbearia" value={form.tenantId} displayName={formTenant?.name}
+                onSelect={(t) => { setForm((f) => ({ ...f, tenantId: t.id })); setFormTenant(t); }} />
             </div>
             <div style={{ flex: 1, minWidth: 140 }}>
               <Input label="Período" value={form.period} onChange={(e) => setForm((f) => ({ ...f, period: e.target.value }))} placeholder="Agosto 2026" />
