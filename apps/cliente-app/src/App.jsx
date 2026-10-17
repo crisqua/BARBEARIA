@@ -626,9 +626,9 @@ export default function App() {
           {/* Header compacto — substitui o bloco de logo grande + "Sair" solto */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
             <HamburgerButton T={T} onClick={() => setMenuOpen(true)} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: T.gold, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tenant.name}</div>
-              {user && <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginTop: 1 }}>Olá, {user.name}</div>}
+            <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
+              <div style={{ fontSize: 15, color: T.gold, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tenant.name}</div>
+              {user && <div style={{ fontSize: 13, color: T.text, fontWeight: 600, marginTop: 2 }}>Olá, {user.name}</div>}
             </div>
             {/* Clicável: atalho direto de logout (não abre o menu). */}
             <div onClick={handleLogout} style={{ cursor: "pointer" }}>
@@ -655,7 +655,7 @@ export default function App() {
             </div>
           ) : (
             <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
-              <div style={{ fontSize: 12.5, color: T.muted }}>Nenhum agendamento futuro.</div>
+              <div style={{ fontSize: 12.5, color: T.text }}>Nenhum agendamento futuro.</div>
             </div>
           )}
 
