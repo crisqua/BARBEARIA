@@ -683,7 +683,7 @@ export default function App() {
           {historicoPrevia.length > 0 ? (
             historicoPrevia.map((a) => {
               const cancelled = a.status === "cancelled";
-              const accent = cancelled ? "#F5A623" : "#4ADE80";
+              const accent = cancelled ? "#F25C5C" : "#4ADE80";
               return (
                 <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 0", borderBottom: `1px solid ${T.border}` }}>
                   <div style={{ width: 38, height: 38, borderRadius: 10, background: accent + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: accent, flexShrink: 0 }}>
