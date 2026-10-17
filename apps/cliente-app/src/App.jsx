@@ -398,6 +398,7 @@ export default function App() {
   const [services, setServices] = useState([]);
   const [allProfessionals, setAllProfessionals] = useState([]);
   const [serviceProfessionals, setServiceProfessionals] = useState([]);
+  const [professionalsLoading, setProfessionalsLoading] = useState(false);
   const [appointments, setAppointments] = useState([]);
   // Menu lateral (Sprint 16, admin-desenvolvain.md) — no nível do componente raiz,
   // não dentro do bloco de uma tela só, para já deixar pronto caso o drawer seja
@@ -466,9 +467,11 @@ export default function App() {
 
   useEffect(() => {
     if (screen !== "profissional" || !selectedService) return;
+    setProfessionalsLoading(true);
     listProfessionalsForService(selectedService.id)
       .then(setServiceProfessionals)
-      .catch(() => setServiceProfessionals([]));
+      .catch(() => setServiceProfessionals([]))
+      .finally(() => setProfessionalsLoading(false));
   }, [screen, selectedService]);
 
   useEffect(() => {
@@ -990,7 +993,10 @@ export default function App() {
         <div style={{ fontSize: 12, color: T.muted, marginBottom: 20 }}>
           {selectedService?.name} · {selectedService && formatPrice(selectedService.priceCents)}
         </div>
-        {serviceProfessionals.length === 0 && (
+        {professionalsLoading && (
+          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Carregando profissionais...</div>
+        )}
+        {!professionalsLoading && serviceProfessionals.length === 0 && (
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum profissional disponível para esse serviço.</div>
         )}
         {serviceProfessionals.map((p) => (
