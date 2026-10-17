@@ -809,7 +809,7 @@ export default function App() {
                       {formatSlotDate(a.startsAt)} · {formatSlotTime(a.startsAt)}
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <div onClick={() => handleCancel(a.id)} style={{ fontSize: 11, color: T.muted, border: `1px solid ${T.border}`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Cancelar</div>
+                      <div onClick={() => handleCancel(a.id)} style={{ fontSize: 11, color: "#F25C5C", border: "1px solid #F25C5C55", borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Cancelar</div>
                       {!needsReschedule && (
                         <div onClick={() => startReschedule(a)} style={{ fontSize: 11, color: T.gold, border: `1px solid ${T.gold}55`, borderRadius: 6, padding: "5px 10px", cursor: "pointer" }}>Remarcar</div>
                       )}
