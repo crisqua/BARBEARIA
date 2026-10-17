@@ -155,7 +155,12 @@ const Phone = ({ children, T, tenant, user, menuOpen, onCloseMenu, onNavigate, o
       <div style={{
         width: 375, background: T.bg, borderRadius: 40,
         border: `2px solid ${T.border}`, overflow: "hidden",
-        boxShadow: "0 0 60px #00000080", height: "fit-content", maxHeight: "94vh", overflowY: "auto",
+        boxShadow: "0 0 60px #00000080", height: "fit-content",
+        // Com o menu aberto, garante altura mínima pro drawer caber inteiro (5 itens + rodapé) —
+        // sem isso, telas com conteúdo curto (ex: Profissionais) deixam a moldura baixa e o
+        // drawer (position: absolute dentro dela) fica cortado com scroll interno.
+        minHeight: menuOpen ? 600 : undefined,
+        maxHeight: "94vh", overflowY: "auto",
         position: "relative",
       }}>
         {children}
