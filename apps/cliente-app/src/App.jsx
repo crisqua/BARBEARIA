@@ -172,7 +172,11 @@ const Phone = ({ children, T, tenant, user, menuOpen, onCloseMenu, onNavigate, o
 };
 
 const ErrorBox = ({ children, T }) => (
-  <div style={{ background: "#F25C5C33", border: "1.5px solid #F25C5C", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#fff", fontWeight: 700, marginBottom: 14 }}>
+  <div style={{
+    background: "#F25C5C33", border: "1.5px solid #F25C5C", borderRadius: 8, padding: "10px 12px",
+    fontSize: 12, color: "#fff", fontWeight: 700, marginBottom: 14,
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", letterSpacing: "0.01em", lineHeight: 1.5,
+  }}>
     {children}
   </div>
 );
@@ -1083,7 +1087,6 @@ export default function App() {
             title={reschedulingAppointment ? "Novo Horário" : "Escolha o Horário"}
             onMenu={() => setMenuOpen(true)}
           />
-          {bookingError && <ErrorBox T={T}>{bookingError}</ErrorBox>}
           <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 20, paddingBottom: 4 }}>
             {days.map((d) => {
               const active = dateKey(d) === dateKey(selectedDate);
@@ -1118,6 +1121,7 @@ export default function App() {
             ))}
           </div>
 
+          {bookingError && <ErrorBox T={T}>{bookingError}</ErrorBox>}
           {selectedSlot && (
             <PrimaryButton T={T} onClick={confirmSlot} disabled={bookingLoading}>
               {bookingLoading ? "Confirmando..." : reschedulingAppointment ? "Confirmar Remarcação" : "Confirmar Horário"}
