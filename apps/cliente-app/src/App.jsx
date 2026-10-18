@@ -197,7 +197,11 @@ const HamburgerButton = ({ T, onClick }) => (
 const BackHeader = ({ T, title, onMenu }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
     <HamburgerButton T={T} onClick={onMenu} />
-    <div style={{ fontSize: 16, fontWeight: 700, color: T.text, flex: 1 }}>{title}</div>
+    <div style={{
+      fontSize: 16, fontWeight: 700, color: T.text, flex: 1,
+      letterSpacing: "0.04em",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    }}>{title}</div>
   </div>
 );
 
@@ -773,8 +777,15 @@ export default function App() {
               display: "flex", justifyContent: "space-between", alignItems: "center",
               padding: "14px 18px", borderBottom: i < 6 ? `1px solid ${T.bg}` : "none",
             }}>
-              <div style={{ fontSize: 13, color: T.text }}>{dia}</div>
-              <div style={{ fontSize: 13, color: horario === "Fechado" ? "#F25C5C" : T.muted, fontWeight: 600 }}>{horario}</div>
+              <div style={{
+                fontSize: 13, color: T.text, letterSpacing: "0.04em",
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              }}>{dia}</div>
+              <div style={{
+                fontSize: 13, color: horario === "Fechado" ? "#F25C5C" : T.muted, fontWeight: 600,
+                letterSpacing: "0.04em",
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              }}>{horario}</div>
             </div>
           ))}
         </div>
