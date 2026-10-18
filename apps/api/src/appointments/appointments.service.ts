@@ -32,6 +32,7 @@ export class AppointmentsService {
 
     const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
     await this.assertWithinWorkingHours(tx, dto.professionalId, startsAt, endsAt);
+    await this.assertNoClientOverlap(tx, clientId, startsAt, endsAt);
 
     try {
       return await tx.appointment.create({
@@ -122,6 +123,7 @@ export class AppointmentsService {
 
     const endsAt = new Date(startsAt.getTime() + service.durationMinutes * 60_000);
     await this.assertWithinWorkingHours(tx, appointment.professionalId, startsAt, endsAt);
+    await this.assertNoClientOverlap(tx, appointment.clientId, startsAt, endsAt, id);
 
     try {
       return await tx.appointment.update({ where: { id }, data: { startsAt, endsAt } });
@@ -178,6 +180,37 @@ export class AppointmentsService {
 
     if (!fits) {
       throw new BadRequestException('Horário fora do expediente do profissional.');
+    }
+  }
+
+  /**
+   * O índice anti-double-booking (seção 5.3 do CLAUDE.md) só impede o MESMO
+   * profissional de ter dois agendamentos no mesmo instante — nada impedia um
+   * cliente de marcar horários sobrepostos com profissionais diferentes (ex:
+   * barba com um das 09:30-10:00 e corte com outro às 09:45). Checagem em
+   * aplicação, não constraint de banco: aqui é o mesmo cliente agindo, não
+   * concorrência real entre pessoas disputando o mesmo horário (caso em que
+   * o índice do banco é obrigatório).
+   */
+  private async assertNoClientOverlap(
+    tx: TenantTx,
+    clientId: string,
+    startsAt: Date,
+    endsAt: Date,
+    excludeAppointmentId?: string,
+  ): Promise<void> {
+    const overlapping = await tx.appointment.findFirst({
+      where: {
+        clientId,
+        status: 'scheduled',
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+      },
+    });
+
+    if (overlapping) {
+      throw new ConflictException('Você já tem um horário marcado nesse intervalo, com outro profissional.');
     }
   }
 

@@ -204,6 +204,71 @@ describe('CRUD de appointments (/v1/appointments)', () => {
     expect(res.status).toBe(409);
   });
 
+  it('rejeita agendamento que sobrepõe outro horário já marcado pelo cliente, com profissional diferente', async () => {
+    const secondProfRes = await request(app.getHttpServer())
+      .post('/v1/professionals')
+      .set('Authorization', `Bearer ${fx.adminToken}`)
+      .send({
+        name: 'Segundo Barbeiro',
+        email: `second-prof-${Date.now()}@test.local`,
+        password: 'senha-forte-123',
+      });
+    const secondProfessionalId = secondProfRes.body.id;
+    await request(app.getHttpServer())
+      .post(`/v1/professionals/${secondProfessionalId}/services`)
+      .set('Authorization', `Bearer ${fx.adminToken}`)
+      .send({ serviceId: fx.serviceId });
+    for (let d = 0; d <= 6; d++) {
+      await request(app.getHttpServer())
+        .post(`/v1/professionals/${secondProfessionalId}/working-hours`)
+        .set('Authorization', `Bearer ${fx.adminToken}`)
+        .send({ weekday: d, startTime: '00:00', endTime: '23:59' });
+    }
+
+    // Cliente já tem um horário marcado de 09:30 a 10:00 (fx.durationMinutes = 30) com
+    // o primeiro profissional. Tenta marcar com o segundo profissional às 09:45 - dentro
+    // do mesmo intervalo, sobrepõe mesmo o profissional sendo outro.
+    const firstSlot = addMinutesIso(fx.testSlotIso, 1800);
+    const firstAppt = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: firstSlot });
+    expect(firstAppt.status).toBe(201);
+
+    const overlappingSlot = addMinutesIso(firstSlot, fx.durationMinutes / 2);
+    const res = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: secondProfessionalId, startsAt: overlappingSlot });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('rejeita remarcação que sobrepõe outro horário já marcado pelo cliente', async () => {
+    const baseSlot = addMinutesIso(fx.testSlotIso, 2100);
+    const apptA = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: baseSlot });
+    expect(apptA.status).toBe(201);
+
+    const freeSlot = addMinutesIso(fx.testSlotIso, 2200);
+    const apptB = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: freeSlot });
+    expect(apptB.status).toBe(201);
+
+    // Remarcar apptB pra dentro do intervalo de apptA deve ser barrado mesmo
+    // sendo o mesmo profissional - excludeAppointmentId cobre só o próprio apptB.
+    const res = await request(app.getHttpServer())
+      .patch(`/v1/appointments/${apptB.body.id}/reschedule`)
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ startsAt: addMinutesIso(baseSlot, fx.durationMinutes / 2) });
+
+    expect(res.status).toBe(409);
+  });
+
   it('rejeita agendamento com profissional/serviço de outro tenant (FK composta, seção 7.6)', async () => {
     const otherFx = await seedBookingFixture(app, prisma, tenantContext, { slugPrefix: 'appt-cross-tenant' });
 
