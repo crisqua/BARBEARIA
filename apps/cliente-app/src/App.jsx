@@ -1031,7 +1031,7 @@ export default function App() {
             Nenhum profissional disponível para esse serviço.
           </div>
         )}
-        {serviceProfessionals.map((p) => (
+        {!professionalsLoading && serviceProfessionals.map((p) => (
           <div key={p.id} onClick={() => { setSelectedPro(p); setSelectedSlot(null); setScreen("horario"); }} style={{
             background: T.card, border: `1.5px solid ${T.border}`,
             borderRadius: 12, padding: 16, marginBottom: 10, cursor: "pointer",
