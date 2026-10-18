@@ -1108,7 +1108,7 @@ export default function App() {
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
-            {availableSlots.map((iso) => (
+            {!slotsLoading && availableSlots.map((iso) => (
               <div key={iso} onClick={() => setSelectedSlot(iso)} style={{
                 padding: "12px 8px", borderRadius: 10, cursor: "pointer", textAlign: "center",
                 background: selectedSlot === iso ? T.gold + "22" : T.card,

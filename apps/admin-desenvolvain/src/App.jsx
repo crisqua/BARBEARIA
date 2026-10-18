@@ -677,7 +677,11 @@ const Barbearias = () => {
   useEffect(() => { load(); }, [page, buscaAtiva]);
 
   useEffect(() => {
-    if (!selecionada) { setDetalhe(null); return; }
+    // Limpa antes de buscar - senão, ao trocar de barbearia selecionada, o painel
+    // de detalhe continua mostrando os dados da anterior até a resposta chegar
+    // (mesma classe de bug corrigida no app cliente em 17-18/10/2026).
+    setDetalhe(null);
+    if (!selecionada) return;
     getTenant(selecionada).then(setDetalhe);
   }, [selecionada]);
 

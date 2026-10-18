@@ -404,7 +404,7 @@ function AppointmentActions({ appointment, onChanged }) {
             <div style={{ fontSize: 11, color: T.muted }}>Nenhum horário livre nesse dia.</div>
           )}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {slots.map((s) => (
+            {!slotsLoading && slots.map((s) => (
               <button key={s} disabled={busy} onClick={() => pickSlot(s)} style={{ ...actionBtnStyle(T.gold), background: T.gold + "14" }}>
                 {formatSlotTime(s)}
               </button>
