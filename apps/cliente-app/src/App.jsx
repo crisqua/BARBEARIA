@@ -626,7 +626,7 @@ export default function App() {
   );
   if (!tenant || screen === null) return (
     <Phone T={T}>
-      <div style={{ padding: 60, textAlign: "center", color: T.muted, fontSize: 13 }}>Carregando…</div>
+      <div style={{ padding: 60, textAlign: "center", color: T.text, fontSize: 13 }}>Carregando…</div>
     </Phone>
   );
 
@@ -739,7 +739,7 @@ export default function App() {
               );
             })
           ) : (
-            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "12px 0" }}>Nenhum histórico ainda.</div>
+            <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "12px 0" }}>Nenhum histórico ainda.</div>
           )}
         </div>
       </Phone>
@@ -782,7 +782,7 @@ export default function App() {
       <div style={{ padding: "16px 24px 32px" }}>
         <BackHeader T={T} title="Nossos Profissionais" onMenu={() => setMenuOpen(true)} />
         {activeProfessionals.length === 0 && (
-          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum profissional cadastrado ainda.</div>
+          <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Nenhum profissional cadastrado ainda.</div>
         )}
         {activeProfessionals.map((p) => (
           <div key={p.id} style={{
@@ -863,7 +863,7 @@ export default function App() {
               );
             })
           ) : (
-            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Nenhum agendamento futuro.</div>
+            <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0 30px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Nenhum agendamento futuro.</div>
           )}
         </div>
       </Phone>
@@ -906,7 +906,7 @@ export default function App() {
               </div>
             ))
           ) : (
-            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0 30px" }}>Nenhum histórico ainda.</div>
+            <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0 30px" }}>Nenhum histórico ainda.</div>
           )}
         </div>
       </Phone>
@@ -1008,10 +1008,10 @@ export default function App() {
           <div style={{ fontSize: 12, color: T.muted, marginBottom: 20 }}>{selectedPro.name}</div>
         )}
         {selectedPro && proServicesLoading && (
-          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Carregando serviços...</div>
+          <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Carregando serviços...</div>
         )}
         {!(selectedPro && proServicesLoading) && screenServices.length === 0 && (
-          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum serviço disponível.</div>
+          <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Nenhum serviço disponível.</div>
         )}
         {!(selectedPro && proServicesLoading) && screenServices.map((s) => (
           <div key={s.id} onClick={() => { setSelectedService(s); setScreen("profissional"); }} style={{
@@ -1041,7 +1041,7 @@ export default function App() {
           {selectedService?.name} · {selectedService && formatPrice(selectedService.priceCents)}
         </div>
         {professionalsLoading && (
-          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Carregando profissionais...</div>
+          <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Carregando profissionais...</div>
         )}
         {!professionalsLoading && serviceProfessionals.length === 0 && (
           <div style={{ background: "#F5A62318", border: "1px solid #F5A62355", borderRadius: 8, padding: "14px 12px", fontSize: 12, color: "#F5A623", textAlign: "center", fontWeight: 600 }}>
@@ -1094,10 +1094,10 @@ export default function App() {
             })}
           </div>
 
-          {slotsLoading && <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Carregando horários…</div>}
+          {slotsLoading && <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Carregando horários…</div>}
           {slotsError && <ErrorBox T={T}>{slotsError}</ErrorBox>}
           {!slotsLoading && !slotsError && availableSlots.length === 0 && (
-            <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Sem horários livres nesse dia.</div>
+            <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Sem horários livres nesse dia.</div>
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
