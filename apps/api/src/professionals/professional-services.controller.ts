@@ -35,7 +35,9 @@ export class ProfessionalServicesController {
     const links = await tx.professionalService.findMany({ where: { professionalId } });
     if (links.length === 0) return [];
 
-    return tx.service.findMany({ where: { id: { in: links.map((link) => link.serviceId) } } });
+    return tx.service.findMany({
+      where: { id: { in: links.map((link) => link.serviceId) }, active: true },
+    });
   }
 
   @Post()

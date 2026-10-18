@@ -97,6 +97,9 @@ export const listServices = () => apiFetch("/v1/services?activeOnly=true&pageSiz
 export const listProfessionalsForService = (serviceId) =>
   apiFetch(`/v1/services/${serviceId}/professionals`);
 
+export const listServicesForProfessional = (professionalId) =>
+  apiFetch(`/v1/professionals/${professionalId}/services`);
+
 export const listProfessionals = () => apiFetch("/v1/professionals?pageSize=100");
 
 // ─── Disponibilidade e agendamentos ───────────────────

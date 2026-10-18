@@ -10,6 +10,7 @@ import {
   listProfessionals,
   listProfessionalsForService,
   listServices,
+  listServicesForProfessional,
   login as apiLogin,
   logout as apiLogout,
   register as apiRegister,
@@ -399,6 +400,8 @@ export default function App() {
   const [allProfessionals, setAllProfessionals] = useState([]);
   const [serviceProfessionals, setServiceProfessionals] = useState([]);
   const [professionalsLoading, setProfessionalsLoading] = useState(false);
+  const [proServices, setProServices] = useState([]);
+  const [proServicesLoading, setProServicesLoading] = useState(false);
   const [appointments, setAppointments] = useState([]);
   // Menu lateral (Sprint 16, admin-desenvolvain.md) — no nível do componente raiz,
   // não dentro do bloco de uma tela só, para já deixar pronto caso o drawer seja
@@ -464,6 +467,19 @@ export default function App() {
     if (screen !== "servico") return;
     listServices().then((r) => setServices(r.items)).catch(() => {});
   }, [screen]);
+
+  // Fluxo inverso (Profissionais → Agendar, seleciona o profissional antes do
+  // serviço): a tela de serviço precisa restringir à lista do profissional
+  // escolhido, não oferecer o catálogo inteiro da barbearia (bug reportado
+  // 17/10 — Antunes só faz barba e a tela mostrava Cabelo e Barba também).
+  useEffect(() => {
+    if (screen !== "servico" || !selectedPro) { setProServices([]); return; }
+    setProServicesLoading(true);
+    listServicesForProfessional(selectedPro.id)
+      .then(setProServices)
+      .catch(() => setProServices([]))
+      .finally(() => setProServicesLoading(false));
+  }, [screen, selectedPro]);
 
   useEffect(() => {
     if (screen !== "profissional" || !selectedService) return;
@@ -960,14 +976,24 @@ export default function App() {
   );
 
   // ── SERVIÇO ──
-  if (screen === "servico") return (
+  if (screen === "servico") {
+    // Se o cliente veio da tela Profissionais (escolheu o profissional antes
+    // do serviço), restringe à lista do que aquele profissional realmente faz.
+    const screenServices = selectedPro ? proServices : services;
+    return (
     <Phone T={T} {...drawerProps} currentScreen="servico">
       <div style={{ padding: "16px 24px 32px" }}>
         <BackHeader T={T} title="Escolha o Serviço" onMenu={() => setMenuOpen(true)} />
-        {services.length === 0 && (
+        {selectedPro && (
+          <div style={{ fontSize: 12, color: T.muted, marginBottom: 20 }}>{selectedPro.name}</div>
+        )}
+        {selectedPro && proServicesLoading && (
+          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Carregando serviços...</div>
+        )}
+        {!(selectedPro && proServicesLoading) && screenServices.length === 0 && (
           <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "20px 0" }}>Nenhum serviço disponível.</div>
         )}
-        {services.map((s) => (
+        {!(selectedPro && proServicesLoading) && screenServices.map((s) => (
           <div key={s.id} onClick={() => { setSelectedService(s); setScreen("profissional"); }} style={{
             background: selectedService?.id === s.id ? T.gold + "18" : T.card,
             border: `1.5px solid ${selectedService?.id === s.id ? T.gold : T.border}`,
@@ -983,7 +1009,8 @@ export default function App() {
         ))}
       </div>
     </Phone>
-  );
+    );
+  }
 
   // ── PROFISSIONAL ──
   if (screen === "profissional") return (
