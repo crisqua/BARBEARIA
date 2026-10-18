@@ -536,7 +536,24 @@ export default function App() {
   const drawerProps = {
     tenant, user, menuOpen,
     onCloseMenu: () => setMenuOpen(false),
-    onNavigate: (dest) => { setScreen(dest); setMenuOpen(false); },
+    // Todo destino do menu é tela de topo, nunca continuação de um agendamento em
+    // andamento (as telas intermediárias do fluxo — profissional/horario/confirmacao —
+    // não estão no DRAWER_ITEMS, só são alcançadas por clique direto dentro do fluxo).
+    // Por isso limpa toda seleção de agendamento aqui, mesma lista do goHome — sem
+    // isso qualquer state (profissional, serviço, reagendamento em andamento) vaza
+    // de uma visita anterior pra próxima vez que o cliente entra por aqui. Bug real
+    // (17/10/2026): selectedPro vazava pra "Agendar Horário"; o mesmo buraco existia
+    // pra reschedulingAppointment, que faria um agendamento novo virar reagendamento
+    // de um appointment antigo abandonado, sem o cliente perceber.
+    onNavigate: (dest) => {
+      setSelectedService(null);
+      setSelectedPro(null);
+      setSelectedSlot(null);
+      setReschedulingAppointment(null);
+      setBookingError("");
+      setScreen(dest);
+      setMenuOpen(false);
+    },
     onLogout: handleLogout,
   };
 
