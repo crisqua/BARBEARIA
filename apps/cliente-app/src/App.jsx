@@ -172,7 +172,7 @@ const Phone = ({ children, T, tenant, user, menuOpen, onCloseMenu, onNavigate, o
 };
 
 const ErrorBox = ({ children, T }) => (
-  <div style={{ background: "#F25C5C22", border: "1px solid #F25C5C55", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#F25C5C", marginBottom: 14 }}>
+  <div style={{ background: "#F25C5C33", border: "1.5px solid #F25C5C", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#fff", fontWeight: 700, marginBottom: 14 }}>
     {children}
   </div>
 );
