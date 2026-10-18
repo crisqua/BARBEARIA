@@ -256,7 +256,11 @@ const Drawer = ({ T, tenant, user, open, onClose, onNavigate, onLogout, currentS
               }}
             >
               <span style={{ fontSize: 15, width: 18, textAlign: "center", color: active ? T.gold : T.muted }}>{item.icon}</span>
-              <span style={{ fontSize: 13.5, color: active ? T.gold : T.text, fontWeight: active ? 700 : 500 }}>{item.label}</span>
+              <span style={{
+                fontSize: 13.5, color: active ? T.gold : T.text, fontWeight: active ? 700 : 500,
+                letterSpacing: "0.04em",
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              }}>{item.label}</span>
             </div>
           );
         })}
