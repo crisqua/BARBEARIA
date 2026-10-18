@@ -686,8 +686,11 @@ export default function App() {
             }}>Ver tudo</div>
           </div>
 
-          {/* Agendar horário: continua acessível, mas não é mais o elemento dominante */}
-          <div onClick={() => setScreen("servico")} style={{
+          {/* Agendar horário: continua acessível, mas não é mais o elemento dominante.
+              Limpa selectedPro antes de entrar — senão herda o profissional de uma
+              visita anterior à tela Profissionais e filtra o catálogo errado (bug
+              reportado 17/10: só aparecia "barba" vindo direto da Início). */}
+          <div onClick={() => { setSelectedPro(null); setScreen("servico"); }} style={{
             textAlign: "center", border: `1.5px solid ${T.gold}`, borderRadius: 10, padding: 12,
             fontSize: 13, fontWeight: 700, color: T.gold, cursor: "pointer", marginBottom: 28,
           }}>+ Agendar novo horário</div>
