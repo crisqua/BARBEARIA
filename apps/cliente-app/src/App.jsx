@@ -1014,7 +1014,14 @@ export default function App() {
           <div style={{ fontSize: 12, color: T.text, textAlign: "center", padding: "20px 0" }}>Nenhum serviço disponível.</div>
         )}
         {!(selectedPro && proServicesLoading) && screenServices.map((s) => (
-          <div key={s.id} onClick={() => { setSelectedService(s); setScreen("profissional"); }} style={{
+          <div key={s.id} onClick={() => {
+            setSelectedService(s);
+            // Veio da tela Profissionais (já escolheu o profissional): pular a tela
+            // de escolha de profissional, que só repetiria a mesma escolha — ir
+            // direto pro horário (bug reportado 18/10: voltava a pedir o profissional).
+            if (selectedPro) { setSelectedSlot(null); setScreen("horario"); }
+            else setScreen("profissional");
+          }} style={{
             background: selectedService?.id === s.id ? T.gold + "18" : T.card,
             border: `1.5px solid ${selectedService?.id === s.id ? T.gold : T.border}`,
             borderRadius: 12, padding: 16, marginBottom: 10, cursor: "pointer",
