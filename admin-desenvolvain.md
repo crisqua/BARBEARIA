@@ -46,10 +46,12 @@ sobrou (`getPerTenantSubscriptions`, base do MRR/Assinaturas) via função Postg
 — primeira exceção de RLS do projeto fora de `tenants`. Desenho pronto, falta confirmação explícita
 antes de implementar.
 
-**Sprint 11 (seção 6) — aguardando decisão, não iniciada:** região do banco longe da API em homolog
-(Render Oregon × Supabase Ohio) — confirmada como causa raiz de nenhuma API de `painel-barbearia`/
-`cliente-app` se manter abaixo de 1s sob carga, nem as mais simples. Decisão de infra (mover um dos
-dois serviços de região), usuário optou por avaliar depois.
+**Sprint 11 (seção 6) — tentativa em 18/10/2026, não concluída, adiada pra quando Produção existir:**
+região do banco longe da API em homolog (Render Oregon × Supabase Ohio) — confirmada como causa raiz
+de nenhuma API de `painel-barbearia`/`cliente-app` se manter abaixo de 1s sob carga, nem as mais
+simples. Tentativa de corrigir só em homolog não conseguiu mover a região (ver seção 6, detalhe
+abaixo) — usuário decidiu deixar a correção de região de fato pra quando o ambiente de Produção for
+criado.
 
 ## 3. Arquitetura
 
@@ -568,7 +570,7 @@ não muda.
 projeto introduz um bypass de RLS fora de `tenants`, decisão que o próprio `CLAUDE.md` pede pra
 parar e confirmar antes de agir (seção 10). Não iniciado até essa confirmação.
 
-### ⏳ Sprint 11 — [Infra/API] Infra: região do banco longe da API (homolog) — aguardando decisão
+### ⏳ Sprint 11 — [Infra/API] Infra: região do banco longe da API (homolog) — tentativa não concluída
 
 **Motivação:** avaliação de desempenho das APIs de "cliente barbearia" (`painel-barbearia` +
 `cliente-app` — não o Painel Master, que é escopo das Sprints 7-10) feita em 16/10/2026, medindo
@@ -609,6 +611,21 @@ região.
 pra perto do Supabase, ou vice-versa). Usuário optou por avaliar depois ("verei depois", 16/10/2026)
 — não iniciado. Relevante também pra Produção, que ainda nem foi provisionada (seção 9) — a mesma
 decisão de região deveria valer desde a criação do ambiente de Produção, não só corrigir homolog.
+
+**Tentativa em homolog (18/10/2026), não concluída:** confirmado com o usuário que mover o Supabase
+de região exige recriar o projeto do zero (migrar schema, dados e Storage) — bem mais custoso que
+mover o Render, que é stateless. Na tentativa de criar o serviço novo do Render em Ohio, o usuário
+**renomeou o serviço existente** (`barberaria-api` → `barberaria-api-homolog`) em vez de criar um
+serviço novo — a região não mudou (confirmado na tela do Render: `Region: Oregon`), porque o Render
+**não permite trocar a região de um serviço já existente**, nem através do seletor de região que
+aparece nas Settings dele (o usuário relatou ter selecionado Ohio ali e mesmo assim permaneceu
+Oregon — o seletor não tem efeito nesse caso, região só é aplicada na criação de um serviço novo).
+Os 3 frontends (`cliente-app`, `painel-barbearia`, `admin-desenvolvain`) já foram repontados pra
+`barberaria-api-homolog.onrender.com` e validados funcionando (login + chamadas autenticadas
+confirmadas via DevTools Network) — então o rename/repoint ficou concluído e é seguro, só não resolve
+o problema de latência, já que a API continua em Oregon. **Decisão:** não tentar de novo em homolog;
+a correção de região de verdade (criar o serviço do zero já escolhendo Ohio na tela de criação, antes
+de clicar em criar — não dá pra corrigir depois) fica pra quando o ambiente de Produção for criado.
 
 ### ⏳ Sprint 12 — [Painel Master] Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
