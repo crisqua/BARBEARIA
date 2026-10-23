@@ -683,22 +683,35 @@ export default function App() {
 
           {/* Próximo agendamento, em destaque */}
           <div style={{ fontSize: 11, color: T.text, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Próximo agendamento</div>
-          {proximo ? (
-            <div style={{ background: `linear-gradient(135deg, ${T.gold}18, ${T.gold}08)`, border: `1.5px solid ${T.gold}55`, borderRadius: 14, padding: 18, marginBottom: 24 }}>
+          {proximo ? (() => {
+            // needs_reschedule (profissional/serviço inativado) usa o mesmo laranja
+            // de aviso de "Meus Agendamentos" — antes esse card ficava sempre dourado,
+            // como se estivesse tudo normal, e o cliente só via o aviso se navegasse
+            // até lá (Sprint 18, admin-desenvolvain.md).
+            const needsReschedule = proximo.status === "needs_reschedule";
+            const accent = needsReschedule ? "#F5A623" : T.gold;
+            return (
+            <div style={{ background: `linear-gradient(135deg, ${accent}18, ${accent}08)`, border: `1.5px solid ${accent}55`, borderRadius: 14, padding: 18, marginBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>{label(proximo).servico}</div>
                   <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>com {label(proximo).profissional}</div>
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: T.gold }}>{label(proximo).preco}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: accent }}>{label(proximo).preco}</div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 12, borderTop: `1px solid ${T.gold}33` }}>
+              {needsReschedule && (
+                <div style={{ fontSize: 11, color: accent, fontWeight: 700, marginBottom: 10 }}>
+                  Esse horário não está mais disponível — cancele e agende novamente.
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 12, borderTop: `1px solid ${accent}33` }}>
                 <span style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{formatSlotDate(proximo.startsAt)}</span>
                 <span style={{ color: T.muted }}>·</span>
                 <span style={{ fontSize: 13, color: T.text, fontWeight: 700 }}>{formatSlotTime(proximo.startsAt)}</span>
               </div>
             </div>
-          ) : (
+            );
+          })() : (
             <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
               <div style={{ fontSize: 12.5, color: T.text, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Nenhum agendamento futuro.</div>
             </div>

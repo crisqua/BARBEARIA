@@ -832,6 +832,35 @@ tem "Sair" dentro) é indireto; o usuário esperava que o avatar fosse um atalho
 padrão mais comum pra esse tipo de ícone. Corrigido: clique no avatar agora chama `handleLogout`
 direto, sem abrir o `Drawer`.
 
+### ✅ Sprint 18 — [App Cliente] Aviso de reagendamento necessário na tela Início — concluído (22/10/2026)
+
+**Motivação:** usuário relatou que, quando um profissional é inativado (seção 4 do `CLAUDE.md`,
+`needs_reschedule` em lote), nada acontece pro cliente do lado do app — "no app do cliente não
+acontece nada". Investigação: não era bem verdade — a tela **Meus Agendamentos** já tinha o aviso
+("Esse horário não está mais disponível — cancele e agende novamente", card laranja, só permite
+Cancelar). O problema real é que a tela **Início**, a primeira que o cliente vê ao entrar, mostrava o
+"Próximo agendamento" sempre com o card dourado padrão, mesmo quando esse agendamento estava
+`needs_reschedule` — nenhum aviso, nenhuma cor diferente, como se estivesse tudo normal. O cliente só
+via o aviso de verdade se navegasse até Meus Agendamentos por conta própria.
+
+**Decisão de escopo, confirmada pelo usuário:** só o aviso visual imediato na Início, reaproveitando o
+padrão que já existe (mesma cor laranja `#F5A623`, mesma frase). Notificação push/e-mail de verdade
+(avisar o cliente mesmo com o app fechado) ficou de fora — exigiria infraestrutura que o projeto não
+tem hoje (service worker + push, ou serviço de e-mail), registrada como pendência separada pra
+planejar depois, não como parte dessa sprint.
+
+**Arquivo — Frontend (`apps/cliente-app/src/App.jsx`, bloco `screen === "home"`, card "Próximo
+agendamento"):**
+- `needsReschedule = proximo.status === "needs_reschedule"` calculado antes do card.
+- `accent` passa a ser `#F5A623` (needs_reschedule) ou `T.gold` (normal) — usado no fundo (gradiente),
+  borda, cor do preço e divisor de data/hora, no lugar do `T.gold` fixo de antes.
+- Mesma frase de aviso de Meus Agendamentos adicionada dentro do card quando `needsReschedule`.
+- Nenhuma mudança de clique/ação — o botão "Ver tudo" já levava pra Meus Agendamentos, onde Cancelar
+  já funciona desde antes; essa sprint é só sobre visibilidade imediata, não sobre criar ação nova.
+
+Sem mudança de backend — mesmo dado (`appointments`, já incluindo `needs_reschedule`) que a tela já
+carregava antes, só não tratava visualmente nesse card específico.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
