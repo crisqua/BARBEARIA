@@ -19,6 +19,7 @@ import {
   login as apiLogin,
   logout as apiLogout,
   setAccessToken,
+  setSessionExpiredHandler,
   updatePlan,
   updateTenant,
   updateSettings,
@@ -294,10 +295,10 @@ const TRow = ({ cells, last }) => (
 );
 
 // ─── LOGIN ───────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, initialNotice }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialNotice || "");
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -2346,6 +2347,7 @@ const Repasses = () => {
 export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
   const [user, setUser] = useState(null);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState("");
   const [page, setPage] = useState("dashboard");
   // Barbearia selecionada ao navegar de Usuários/Financeiro pra outra tela (Sprint 8/9,
   // admin-desenvolvain.md) — state levantado aqui porque os componentes são irmãos, sem relação
@@ -2380,6 +2382,17 @@ export default function App() {
       });
   }, []);
 
+  // Qualquer 401 que sobreviva ao refresh (apiFetch, api/client.js) cai aqui —
+  // antes, cada tela só via "a lista veio vazia/erro genérico", sem o super
+  // admin entender que a sessão caiu.
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      setScreen("login");
+    });
+  }, []);
+
   const handleThemeChange = (settings) => {
     applyTheme(settings);
     setThemeTick((t) => t + 1);
@@ -2393,6 +2406,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await whoami();
     setUser(me);
+    setSessionExpiredMessage("");
     setScreen("app");
     getSettings().then((s) => { applyTheme(s); setThemeTick((t) => t + 1); }).catch(() => {});
   };
@@ -2405,6 +2419,7 @@ export default function App() {
     }
     setAccessToken(null);
     setUser(null);
+    setSessionExpiredMessage("");
     setScreen("login");
   };
 
@@ -2412,7 +2427,7 @@ export default function App() {
     return <div style={{ minHeight: "100vh", background: T.bg }} />;
   }
   if (screen === "login") {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} initialNotice={sessionExpiredMessage} />;
   }
 
   const render = () => {

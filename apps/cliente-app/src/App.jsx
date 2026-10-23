@@ -16,6 +16,7 @@ import {
   register as apiRegister,
   rescheduleAppointment,
   setAccessToken,
+  setSessionExpiredHandler,
 } from "./api/client";
 
 // ─── TOKENS (fallback enquanto a marca do tenant carrega) ──
@@ -296,10 +297,10 @@ const inputStyle = (T) => ({
 
 // ─── AUTENTICAÇÃO ──────────────────────────────────────────
 
-function LoginScreen({ T, tenant, onLogin, goRegister }) {
+function LoginScreen({ T, tenant, onLogin, goRegister, initialNotice }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialNotice || "");
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -407,6 +408,7 @@ export default function App() {
 
   const [screen, setScreen] = useState(null); // null = checando sessão
   const [user, setUser] = useState(null);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState("");
 
   const [services, setServices] = useState([]);
   const [allProfessionals, setAllProfessionals] = useState([]);
@@ -442,6 +444,17 @@ export default function App() {
     getPublicTenant()
       .then(setTenant)
       .catch(() => setTenantError("Não foi possível carregar os dados da barbearia."));
+  }, []);
+
+  // Qualquer 401 que sobreviva ao refresh (apiFetch, client.js) cai aqui —
+  // antes, cada tela só via "a lista veio vazia" e mostrava algo tipo "Nenhum
+  // profissional disponível", sem o usuário entender que a sessão caiu.
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      setScreen("login");
+    });
   }, []);
 
   // Restaura sessão a partir do token salvo, se houver.
@@ -520,6 +533,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await getMe();
     setUser(me);
+    setSessionExpiredMessage("");
     setScreen("home");
   };
 
@@ -528,6 +542,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await getMe();
     setUser(me);
+    setSessionExpiredMessage("");
     setScreen("home");
   };
 
@@ -540,6 +555,7 @@ export default function App() {
     setAccessToken(null);
     setUser(null);
     setAppointments([]);
+    setSessionExpiredMessage("");
     setScreen("login");
   };
 
@@ -643,7 +659,7 @@ export default function App() {
   );
 
   // ── LOGIN / CADASTRO ──
-  if (screen === "login") return <LoginScreen T={T} tenant={tenant} onLogin={handleLogin} goRegister={() => setScreen("register")} />;
+  if (screen === "login") return <LoginScreen T={T} tenant={tenant} onLogin={handleLogin} goRegister={() => setScreen("register")} initialNotice={sessionExpiredMessage} />;
   if (screen === "register") return <RegisterScreen T={T} tenant={tenant} onRegister={handleRegister} goLogin={() => setScreen("login")} />;
 
   // ── HOME ──

@@ -21,6 +21,16 @@ export function getTenantSlug() {
   return TENANT_SLUG;
 }
 
+// Avisado quando uma requisição autenticada volta 401 mesmo depois da
+// tentativa de refresh — sem isso, cada tela que chama apiFetch trata esse
+// 401 como "deu erro, mostra lista vazia" (ex: catch(() => setX([]))), e o
+// usuário só vê um estado tipo "Nenhum profissional disponível", sem saber
+// que na verdade a sessão caiu. Registrado pelo App.jsx uma vez só.
+let onSessionExpired = () => {};
+export function setSessionExpiredHandler(fn) {
+  onSessionExpired = fn;
+}
+
 async function refreshAccessToken() {
   const res = await fetch(`${API_URL}/v1/auth/refresh`, {
     method: "POST",
@@ -40,6 +50,8 @@ async function refreshAccessToken() {
  * cookie httpOnly) se a resposta vier 401, e normaliza erro/sucesso.
  */
 export async function apiFetch(path, { method = "GET", body, skipAuthRetry = false } = {}) {
+  const hadToken = !!accessToken;
+
   const doFetch = (token) =>
     fetch(`${API_URL}${path}`, {
       method,
@@ -68,6 +80,16 @@ export async function apiFetch(path, { method = "GET", body, skipAuthRetry = fal
     const error = new Error(message ?? `Erro ${res.status}`);
     error.status = res.status;
     error.body = data;
+
+    // Só é "sessão expirou" se havia token (ou seja, o app achava que estava
+    // logado) e mesmo assim voltou 401 depois do refresh — não confundir com
+    // 401 de login/cadastro com credencial errada, que não tem token nenhum.
+    if (res.status === 401 && hadToken) {
+      error.sessionExpired = true;
+      setAccessToken(null);
+      onSessionExpired();
+    }
+
     throw error;
   }
 

@@ -21,6 +21,7 @@ import {
   logout as apiLogout,
   rescheduleAppointment,
   setAccessToken,
+  setSessionExpiredHandler,
   unassignService,
   updateMyTenant,
   updateProfessional,
@@ -163,10 +164,10 @@ const STATUS_LABEL = {
 const STATUS_COLOR = { scheduled: T.success, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
 
 // ─── LOGIN ─────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, initialNotice }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialNotice || "");
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -1980,6 +1981,7 @@ function Config() {
 export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão | "login" | "app"
   const [user, setUser] = useState(null);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState("");
   const [page, setPage] = useState("dashboard");
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2005,6 +2007,17 @@ export default function App() {
       });
   }, []);
 
+  // Qualquer 401 que sobreviva ao refresh (apiFetch, api/client.js) cai aqui —
+  // antes, cada tela só via "a lista veio vazia/erro genérico", sem o admin
+  // entender que a sessão caiu.
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      setScreen("login");
+    });
+  }, []);
+
   const handleLogin = async (email, password) => {
     const res = await apiLogin(email, password);
     if (res.user.role !== "admin") {
@@ -2013,6 +2026,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await getMe();
     setUser(me);
+    setSessionExpiredMessage("");
     setScreen("app");
   };
 
@@ -2024,6 +2038,7 @@ export default function App() {
     }
     setAccessToken(null);
     setUser(null);
+    setSessionExpiredMessage("");
     setScreen("login");
   };
 
@@ -2031,7 +2046,7 @@ export default function App() {
     return <div style={{ minHeight: "100vh", background: T.bg }} />;
   }
   if (screen === "login") {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} initialNotice={sessionExpiredMessage} />;
   }
 
   const render = () => {

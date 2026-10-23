@@ -861,6 +861,42 @@ agendamento"):**
 Sem mudança de backend — mesmo dado (`appointments`, já incluindo `needs_reschedule`) que a tela já
 carregava antes, só não tratava visualmente nesse card específico.
 
+### ✅ Sprint 19 — [Todos os apps] Aviso de sessão expirada, nos 3 frontends — concluído (22/10/2026)
+
+**Motivação:** usuário reportou que a tela "Escolha o Profissional" (cliente-app) mostrou "Nenhum
+profissional disponível para esse serviço" pra um serviço que dois profissionais ativos realizam —
+causa real era a sessão ter caído no meio do uso, não falta de profissional. Achado na investigação:
+em `apiFetch` (os 3 apps têm a mesma função, cada um no seu `src/api/client.js`), quando uma
+requisição autenticada volta `401` mesmo depois da tentativa de refresh automático via cookie, o erro
+só é lançado genérico — cada tela que chama `apiFetch` tem seu próprio `.catch()` (ex:
+`.catch(() => setServiceProfessionals([]))`), que trata esse 401 exatamente igual a "a lista veio
+vazia". O usuário nunca via um aviso de verdade dizendo que precisava logar de novo — via uma tela
+enganosa, como se o dado fosse genuinamente inexistente.
+
+**Decisão de escopo:** corrigir nos 3 apps (`cliente-app`, `painel-barbearia`, `admin-desenvolvain`) —
+todos têm a cópia duplicada do mesmo `apiFetch`/fluxo de refresh, então o mesmo problema existia nos
+3, não só onde foi reportado.
+
+**O que mudou, igual nos 3 apps** (`src/api/client.js` + `src/App.jsx` de cada um):
+- `apiFetch` agora guarda se havia um token **antes** da chamada (`hadToken`). Se a resposta final
+  ainda for `401` depois da tentativa de refresh **e** havia token, é tratado como sessão expirada de
+  verdade (não confundir com 401 de login/cadastro com credencial errada, que nunca tem token) — nesse
+  caso, limpa o token e chama um handler central (`onSessionExpired`, registrado via novo
+  `setSessionExpiredHandler()`).
+- `App.jsx` de cada app registra esse handler uma vez (`useEffect` no componente raiz): ao disparar,
+  limpa o usuário, define uma mensagem ("Sua sessão expirou. Faça login novamente.") e manda pra tela
+  de login.
+- `LoginScreen` de cada app ganhou um prop novo (`initialNotice`), que semeia o `error` local já
+  existente — reaproveita o mesmo `ErrorBox`/banner de erro que a tela já tinha, sem criar componente
+  novo.
+- A mensagem é limpa em login bem-sucedido e em logout explícito (`handleLogin`/`handleLogout`), pra
+  não aparecer fora de contexto depois.
+
+Sem mudança de backend. Sem mudança de endpoint. Cada tela individual continua com seu
+`.catch(() => setX([]))` de sempre — isso continua certo pra erros genuínos (ex: rede caiu numa
+chamada pontual); a diferença é que agora uma sessão expirada nunca mais passa por esse caminho
+silencioso, é interceptada antes, no nível do `apiFetch`.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
