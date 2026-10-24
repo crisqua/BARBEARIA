@@ -136,13 +136,15 @@ const nowInBarbershopTime = () => {
   return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
 };
 
-function nextDays(count = 7) {
+// `offset` negativo gera dias antes de hoje — usado pela Agenda (dono da
+// barbearia precisa consultar dias passados, não só os próximos 14).
+function nextDays(count = 7, offset = 0) {
   const days = [];
   const base = new Date(nowInBarbershopTime());
   base.setUTCHours(0, 0, 0, 0);
   for (let i = 0; i < count; i++) {
     const d = new Date(base);
-    d.setUTCDate(d.getUTCDate() + i);
+    d.setUTCDate(d.getUTCDate() + offset + i);
     days.push(d);
   }
   return days;
@@ -587,7 +589,17 @@ function Agenda() {
 
   const svcName = (id) => services.find((s) => s.id === id)?.name || "—";
   const clientName = (id) => clients[id] || "—";
-  const days = nextDays(14);
+  // 7 dias atrás até 13 dias à frente — antes só ia pra frente, sem jeito de
+  // consultar agenda passada (bug reportado 24/10/2026).
+  const days = nextDays(21, -7);
+  const todayKey = dateKey(nextDays()[0]);
+  const todayRef = useRef(null);
+
+  // Abre a tela já com "hoje" visível na faixa, mesmo com dias passados
+  // agora aparecendo antes dele.
+  useEffect(() => {
+    todayRef.current?.scrollIntoView({ inline: "start", block: "nearest" });
+  }, []);
 
   const [filterCliente, setFilterCliente] = useState("");
   const [filterServico, setFilterServico] = useState("");
@@ -609,7 +621,7 @@ function Agenda() {
         {days.map((d) => {
           const active = dateKey(d) === dateKey(selectedDate);
           return (
-            <div key={dateKey(d)} onClick={() => setSelectedDate(d)} style={{
+            <div key={dateKey(d)} ref={dateKey(d) === todayKey ? todayRef : null} onClick={() => setSelectedDate(d)} style={{
               flexShrink: 0, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
               background: active ? T.gold + "22" : T.card,
               border: `1.5px solid ${active ? T.gold : T.border}`,
