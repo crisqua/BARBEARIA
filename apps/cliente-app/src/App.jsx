@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   cancelAppointment,
   createAppointment,
@@ -409,6 +409,13 @@ export default function App() {
   const [screen, setScreen] = useState(null); // null = checando sessão
   const [user, setUser] = useState(null);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState("");
+  // Diferencia "token salvo já tava inválido ao abrir o app" (silencioso, de
+  // sempre) de "a sessão caiu no meio do uso" (aí sim mostra o aviso) — sem
+  // isso, qualquer token velho parado no localStorage de uma sessão anterior
+  // mostrava "sua sessão expirou" logo na primeira tela, mesmo sem o usuário
+  // nunca ter chegado a entrar nessa visita (bug reportado 24/10/2026). Ref,
+  // não state, porque o handler abaixo é registrado uma vez só.
+  const isAuthedRef = useRef(false);
 
   const [services, setServices] = useState([]);
   const [allProfessionals, setAllProfessionals] = useState([]);
@@ -451,9 +458,13 @@ export default function App() {
   // profissional disponível", sem o usuário entender que a sessão caiu.
   useEffect(() => {
     setSessionExpiredHandler(() => {
+      const wasAuthed = isAuthedRef.current;
       setUser(null);
-      setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      isAuthedRef.current = false;
       setScreen("login");
+      if (wasAuthed) {
+        setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      }
     });
   }, []);
 
@@ -466,6 +477,7 @@ export default function App() {
     getMe()
       .then((me) => {
         setUser(me);
+        isAuthedRef.current = true;
         setScreen("home");
       })
       .catch(() => {
@@ -533,6 +545,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await getMe();
     setUser(me);
+    isAuthedRef.current = true;
     setSessionExpiredMessage("");
     setScreen("home");
   };
@@ -542,6 +555,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await getMe();
     setUser(me);
+    isAuthedRef.current = true;
     setSessionExpiredMessage("");
     setScreen("home");
   };
@@ -554,6 +568,7 @@ export default function App() {
     }
     setAccessToken(null);
     setUser(null);
+    isAuthedRef.current = false;
     setAppointments([]);
     setSessionExpiredMessage("");
     setScreen("login");

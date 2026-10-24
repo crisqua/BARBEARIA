@@ -2358,6 +2358,13 @@ export default function App() {
   const [, setThemeTick] = useState(0); // força re-render depois de applyTheme mutar T
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Diferencia "token salvo já tava inválido ao abrir o app" (silencioso, de
+  // sempre) de "a sessão caiu no meio do uso" (aí sim mostra o aviso) — sem
+  // isso, qualquer token velho parado no localStorage de uma sessão anterior
+  // mostrava "sua sessão expirou" logo na primeira tela, mesmo sem o usuário
+  // nunca ter chegado a entrar nessa visita (bug reportado 24/10/2026). Ref,
+  // não state, porque o handler abaixo é registrado uma vez só.
+  const isAuthedRef = useRef(false);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -2372,6 +2379,7 @@ export default function App() {
           return;
         }
         setUser(me);
+        isAuthedRef.current = true;
         setScreen("app");
         // Tema não bloqueia o boot — se falhar, fica no padrão.
         getSettings().then((s) => { applyTheme(s); setThemeTick((t) => t + 1); }).catch(() => {});
@@ -2387,9 +2395,13 @@ export default function App() {
   // admin entender que a sessão caiu.
   useEffect(() => {
     setSessionExpiredHandler(() => {
+      const wasAuthed = isAuthedRef.current;
       setUser(null);
-      setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      isAuthedRef.current = false;
       setScreen("login");
+      if (wasAuthed) {
+        setSessionExpiredMessage("Sua sessão expirou. Faça login novamente.");
+      }
     });
   }, []);
 
@@ -2406,6 +2418,7 @@ export default function App() {
     setAccessToken(res.accessToken);
     const me = await whoami();
     setUser(me);
+    isAuthedRef.current = true;
     setSessionExpiredMessage("");
     setScreen("app");
     getSettings().then((s) => { applyTheme(s); setThemeTick((t) => t + 1); }).catch(() => {});
@@ -2419,6 +2432,7 @@ export default function App() {
     }
     setAccessToken(null);
     setUser(null);
+    isAuthedRef.current = false;
     setSessionExpiredMessage("");
     setScreen("login");
   };

@@ -897,6 +897,15 @@ Sem mudança de backend. Sem mudança de endpoint. Cada tela individual continua
 chamada pontual); a diferença é que agora uma sessão expirada nunca mais passa por esse caminho
 silencioso, é interceptada antes, no nível do `apiFetch`.
 
+**Correção (24/10/2026):** o aviso aparecia até na primeira tela, logo ao abrir o app — bastava
+existir um token velho no `localStorage` (de uma sessão de testes anterior, por exemplo) pra disparar
+"Sua sessão expirou" mesmo sem o usuário ter chegado a usar nada nessa visita, porque a própria
+checagem de sessão no boot (`getMe()`/`whoami()` logo no `useEffect` inicial) passa pelo mesmo
+`apiFetch` que agora aciona o handler em qualquer 401. Corrigido nos 3 apps com uma `ref`
+(`isAuthedRef`), que só vira `true` depois de um login/boot confirmado de verdade — o aviso só
+aparece se isso já era `true` quando o 401 aconteceu, ou seja, só quando a sessão cai **no meio do
+uso**, nunca quando um token inválido só estava parado desde antes.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
