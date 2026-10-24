@@ -20,6 +20,26 @@
         border: none;
         border-radius: 6px;
       }
+
+      /* Barra de rolagem padrão do navegador (cinza) destoava do tema escuro/dourado — usada na faixa de dias da Agenda. */
+      .themed-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: #C9A84C88 #1F1F1F;
+      }
+      .themed-scroll::-webkit-scrollbar {
+        height: 6px;
+      }
+      .themed-scroll::-webkit-scrollbar-track {
+        background: #1F1F1F;
+        border-radius: 10px;
+      }
+      .themed-scroll::-webkit-scrollbar-thumb {
+        background: #C9A84C88;
+        border-radius: 10px;
+      }
+      .themed-scroll::-webkit-scrollbar-thumb:hover {
+        background: #C9A84C;
+      }
     </style>
   </head>
   <body>

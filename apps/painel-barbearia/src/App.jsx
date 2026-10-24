@@ -617,7 +617,7 @@ function Agenda() {
         <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{professionals.length} profissionais</div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 20, paddingBottom: 4 }}>
+      <div className="themed-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", marginBottom: 20, paddingBottom: 4 }}>
         {days.map((d) => {
           const active = dateKey(d) === dateKey(selectedDate);
           return (
