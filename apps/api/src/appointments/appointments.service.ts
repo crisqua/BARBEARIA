@@ -218,6 +218,16 @@ export class AppointmentsService {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return new ConflictException('Esse horário acabou de ser ocupado. Escolha outro.');
     }
+    // Constraint de exclusão `no_overlap_appointments` (migration
+    // 0010_add_appointment_overlap_exclusion, Sprint 22) — sobreposição de
+    // intervalo pro MESMO profissional. Postgres levanta SQLSTATE 23P01
+    // (exclusion_violation), diferente de 23505/P2002 (unique_violation),
+    // e o Prisma não tem um P-code próprio pra isso: chega como
+    // PrismaClientUnknownRequestError, só com `message` (sem `code`
+    // estruturado) — por isso o `includes` na mensagem, não um campo.
+    if (err instanceof Prisma.PrismaClientUnknownRequestError && err.message.includes('23P01')) {
+      return new ConflictException('Esse profissional já tem outro atendimento nesse horário.');
+    }
     return err as Error;
   }
 }

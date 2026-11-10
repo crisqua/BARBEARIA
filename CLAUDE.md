@@ -110,7 +110,6 @@ Se em algum momento parecer necessário implementar algo dessa segunda lista par
 ### Decisões conscientemente adiadas (não são esquecimento, são débito técnico documentado)
 
 - **Identidade global de usuário:** hoje `UNIQUE(tenant_id, email)` permite o mesmo e-mail em tenants diferentes, como identidades separadas. Uma evolução futura (`users` + `tenant_users`) permitiria um mesmo cliente logar em várias barbearias com uma identidade única. **Não implementar no MVP** — só revisitar se houver demanda real validada.
-- **Sobreposição de horário no anti-double-booking:** o índice atual (seção 5.3) impede apenas `starts_at` idêntico para o mesmo profissional, não sobreposição de intervalo (ex: 14:00–14:45 e 14:30–15:15 não são bloqueados entre si). Solução futura já mapeada (constraint de exclusão com `btree_gist`, seção 5.3). **Não implementar no MVP**, mas o frontend deve gerar a lista de horários disponíveis já considerando a duração do serviço anterior, para minimizar a chance prática de colisão.
 - **Timezone por tenant:** o schema não modela fuso horário — `starts_at`/`ends_at` (Timestamptz) e `working_hours.start_time`/`end_time` (Time) são tratados como a hora local da barbearia, sem conversão, sempre lidos/escritos via getters/`Date.UTC` em UTC (nunca o timezone do processo Node). Qualquer comparação com "agora" (ex: bloquear agendamento no passado) deve usar `nowInBarbershopTime()` (`common/time.util.ts` no backend, duplicado nos dois frontends), que fixa o timezone em `America/Sao_Paulo` via `Intl` — comparar direto com `Date.now()`/`new Date()` quebra em qualquer ambiente cujo relógio do processo não seja Brasília (ex: Render roda em UTC). **Não implementar timezone por tenant no MVP** — só revisitar se o mercado deixar de ser só Brasil.
 - **Agendamento `scheduled` cujo horário já passou, sem ninguém ter atualizado o status (achado 24/10/2026):** não existe nenhuma limpeza automática — sem cron/job no projeto, o status só muda por ação manual do admin (`Cancelar`/`Concluir`/`Remarcar`). Se ninguém agir, o agendamento fica `scheduled` indefinidamente, mesmo com o horário no passado — ficou visível na Agenda do painel depois que a tela passou a mostrar dias anteriores (ver `admin-desenvolvain.md`). **Decisão consciente do usuário: não implementar nenhuma ação agora** (nem aviso visual, nem expurgo automático) — o admin pode simplesmente olhar pra trás e agir quando quiser; se não agir, a ideia é "expurgar ao longo do tempo" no futuro, sem regra definida ainda. Avaliado e descartado por enquanto: expurgo automático via cron mudaria o status sozinho (ex: pra `completed`) sem confirmação de que o atendimento realmente aconteceu, o que distorceria métricas reais (faturamento, histórico do cliente) — se for revisitado, precisa de regra de negócio clara antes (depois de quanto tempo, vira qual status).
 
@@ -250,7 +249,7 @@ CREATE UNIQUE INDEX idx_no_double_booking
 
 Impede, **no nível do banco**, dois agendamentos concorrentes para o mesmo horário exato do mesmo profissional — mais confiável do que validar isso só na aplicação sob concorrência.
 
-**Limitação conhecida (débito técnico documentado, não implementar no MVP):** este índice não impede *sobreposição* de intervalos com `starts_at` diferentes (ex: 14:00–14:45 e 14:30–15:15). Evolução futura, já desenhada para quando for priorizada:
+**Implementado (2026-11-10, Sprint 22 — `admin-desenvolvain.md`):** esse índice sozinho não impedia *sobreposição* de intervalos com `starts_at` diferentes (ex: 14:00–14:45 e 14:30–15:15) — só `starts_at` idêntico. Corrigido com uma constraint de exclusão (migration `0010_add_appointment_overlap_exclusion`):
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
@@ -259,9 +258,11 @@ ALTER TABLE appointments ADD CONSTRAINT no_overlap_appointments
   EXCLUDE USING gist (
     tenant_id WITH =,
     professional_id WITH =,
-    tsrange(starts_at, ends_at) WITH &&
+    tstzrange(starts_at, ends_at) WITH &&
   ) WHERE (status = 'scheduled');
 ```
+
+`tstzrange`, não `tsrange` — `starts_at`/`ends_at` são `TIMESTAMPTZ`, e `tsrange` só aceita `TIMESTAMP` sem timezone (falha na hora de aplicar; achado durante a implementação, corrige o que o desenho original tinha). O Postgres levanta `23P01` (exclusion_violation) numa violação — classe de erro diferente de `23505`/`P2002` (unique_violation) que `translateConflict()` já tratava; chega ao Prisma como `PrismaClientUnknownRequestError` (sem `code` estruturado), então o tratamento é por `err.message.includes('23P01')`, não por um código de erro do Prisma. Coberto por teste e2e (`test/appointments/appointments-crud.e2e-spec.ts`).
 
 ### 5.4 Row-Level Security (aplicado em todas as tabelas de negócio)
 

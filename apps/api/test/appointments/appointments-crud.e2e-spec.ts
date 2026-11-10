@@ -4,7 +4,7 @@ import { nowInBarbershopTime } from '../../src/common/time.util';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { TenantContextService } from '../../src/prisma/tenant-context.service';
 import { createTestApp } from '../utils/create-test-app';
-import { cleanupTenantWithUser } from '../utils/seed-auth-fixtures';
+import { cleanupTenantWithUser, seedUserInTenant } from '../utils/seed-auth-fixtures';
 import { BookingFixture, addMinutesIso, seedBookingFixture } from '../utils/seed-booking-fixtures';
 
 describe('CRUD de appointments (/v1/appointments)', () => {
@@ -265,6 +265,34 @@ describe('CRUD de appointments (/v1/appointments)', () => {
       .patch(`/v1/appointments/${apptB.body.id}/reschedule`)
       .set('Authorization', `Bearer ${fx.clienteToken}`)
       .send({ startsAt: addMinutesIso(baseSlot, fx.durationMinutes / 2) });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('rejeita agendamento que sobrepõe outro já marcado com o MESMO profissional, starts_at diferente (Sprint 22, constraint de banco)', async () => {
+    const secondCliente = await seedUserInTenant(prisma, tenantContext, fx.admin.tenantId, 'cliente');
+    const secondLogin = await request(app.getHttpServer()).post('/v1/auth/login').send({
+      tenantSlug: fx.admin.tenantSlug,
+      email: secondCliente.email,
+      password: secondCliente.password,
+    });
+    const secondToken = secondLogin.body.accessToken;
+
+    const firstSlot = addMinutesIso(fx.testSlotIso, 2400);
+    const firstAppt = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${fx.clienteToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: firstSlot });
+    expect(firstAppt.status).toBe(201);
+
+    // starts_at diferente do primeiro (o índice idx_no_double_booking não pegaria isso),
+    // mas o intervalo se cruza na metade da duração - quem bloqueia é a constraint
+    // EXCLUDE USING gist (migration 0010_add_appointment_overlap_exclusion).
+    const overlappingSlot = addMinutesIso(firstSlot, fx.durationMinutes / 2);
+    const res = await request(app.getHttpServer())
+      .post('/v1/appointments')
+      .set('Authorization', `Bearer ${secondToken}`)
+      .send({ serviceId: fx.serviceId, professionalId: fx.professionalId, startsAt: overlappingSlot });
 
     expect(res.status).toBe(409);
   });

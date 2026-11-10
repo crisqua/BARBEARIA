@@ -906,6 +906,112 @@ checagem de sessão no boot (`getMe()`/`whoami()` logo no `useEffect` inicial) p
 aparece se isso já era `true` quando o 401 aconteceu, ou seja, só quando a sessão cai **no meio do
 uso**, nunca quando um token inválido só estava parado desde antes.
 
+### ⏳ Sprint 20 — [Operacional] Limpar tenants de teste em homolog (~55 tenants) — não iniciado
+
+**Critério de identificação (seguro e preciso), achado no código das fixtures** (`test/utils/seed-auth-fixtures.ts`):
+toda fixture usa `seedTenantWithUser`, que gera `slug = <prefixo>-<timestamp>-<string aleatória>` e
+`name = "Barbearia <prefixo>"`. Qualquer tenant cujo `name` comece com `Barbearia ` seguido de um dos
+36 prefixos realmente usados na suíte (`activity-admin`, `appt`, `appt-cross-tenant`,
+`appt-other-cliente`, `avail`, `blocked`, `body-override`, `concurrency`, `dash-admin`,
+`dash-barbeiro`, `idor-a`, `idor-b`, `login-test`, `pay-admin`, `pay-admin-b`, `payout-admin`,
+`plans-admin`, `prof-admin`, `prof-other`, `ps-admin`, `ps-other`, `public-cache`, `query-a`,
+`query-b`, `reactivate-prof`, `refresh-test`, `stats-a`, `stats-b`, `sub-admin`,
+`super-admin-test`, `svc-admin`, `svc-other`, `tenant-me`, `tenant-me-cliente`, `users-admin`,
+`wh-admin`) é lixo de teste, nunca um tenant real — o `homologador` não bate em nenhum desses
+padrões.
+
+**Dois obstáculos reais, não é só "apertar deletar":**
+1. Não existe rota de excluir tenant hoje — `admin-tenants.controller.ts`/`.service.ts` só tem
+   `PATCH` pra suspender/reativar (`status`). Nenhum `DELETE`, nem backend nem UI.
+2. Mesmo existindo, apagar a linha de `tenants` direto falharia — nenhuma FK do `schema.prisma` tem
+   `onDelete: Cascade`. Um tenant tem filhos em 9 tabelas (`appointments`, `payments`, `payouts`,
+   `platform_activities`, `subscriptions`, `working_hours`, `professional_services`, `users`,
+   `services`), todas sem cascade.
+
+**Decisão em aberto antes de implementar:** (a) script de limpeza **único**, rodado uma vez direto
+no Postgres de homolog, ou (b) funcionalidade real de "excluir barbearia" no Painel Master, pra
+existir dali pra frente. Recomendação: (a) — não há razão de negócio pra um Super Admin excluir de
+verdade (irreversível) uma barbearia paga em Produção; hoje só existe suspender (reversível), e isso
+parece proposital. Criar exclusão de verdade é uma decisão maior (RBAC, confirmação, ação
+irreversível) que esse problema não pede.
+
+**Se for (a), o que precisa ser feito:** script (Node/ts-node com Prisma Client, ou SQL direto) que:
+seleciona tenants com `name` batendo em `Barbearia <prefixo>` pra algum dos 36 prefixos (lista
+explícita, nunca um `LIKE` genérico, pra nunca arriscar pegar tenant real por engano); apaga os
+filhos na ordem certa (`appointments` → `payments` → `payouts` → `platform_activities` →
+`subscriptions` → `working_hours` → `professional_services` → `users` → `services` → por último
+`tenants`); roda um `SELECT` de conferência mostrando a lista antes do `DELETE` de verdade, revisado
+pelo usuário.
+
+**Relacionado à Sprint 21:** limpar uma vez não resolve de vez — sem banco de teste separado, a
+próxima rodada de `test:e2e` contra homolog suja tudo de novo. Faz sentido tratar as duas juntas, ou
+pelo menos a 21 logo depois da 20.
+
+### ⏳ Sprint 21 — [Operacional] Banco de teste separado de homolog — não iniciado
+`test:e2e` usa o mesmo Postgres da homologação manual (`DATABASE_URL`/`DIRECT_URL` do `.env` local)
+— risco operacional registrado 2x no `CLAUDE.md`. Correção óbvia: `.env.test` com `DATABASE_URL`
+própria, apontando pra um banco separado (ou um schema/projeto Supabase dedicado a testes). Sem isso,
+a limpeza da Sprint 20 não é definitiva.
+
+### ✅ Sprint 22 — [Backend] Sobreposição de horário no anti-double-booking (mesmo profissional) — concluído (10/11/2026)
+O índice `idx_no_double_booking` (migration `0001_init`) só impedia `starts_at` idêntico pro mesmo
+profissional, não sobreposição de intervalo (ex: 14:00–14:45 x 14:30–15:15). Diferente da
+sobreposição cliente×profissionais-diferentes (já corrigida antes, validação em aplicação,
+`assertNoClientOverlap`) — essa aqui é nível de banco, concorrência real entre pessoas disputando o
+mesmo profissional.
+
+**Implementado:** migration `0010_add_appointment_overlap_exclusion` — `CREATE EXTENSION IF NOT
+EXISTS btree_gist;` + `ALTER TABLE appointments ADD CONSTRAINT no_overlap_appointments EXCLUDE USING
+gist (tenant_id WITH =, professional_id WITH =, tstzrange(starts_at, ends_at) WITH &&) WHERE (status
+= 'scheduled')`. Antes de aplicar, rodada uma checagem por tenant (respeitando RLS, via
+`TenantContextService`) contra o banco local: **0 conflitos** em 79 tenants — migration aplicada sem
+precisar limpar dado nenhum. Antes de aplicar em homolog/Produção, repetir essa checagem lá (não
+verificado ainda nesses ambientes).
+
+**Achado durante a implementação, corrige o desenho original (CLAUDE.md seção 5.3):** o SQL ali usava
+`tsrange(starts_at, ends_at)` — falha, porque `starts_at`/`ends_at` são `TIMESTAMPTZ` e `tsrange` só
+aceita `TIMESTAMP` sem timezone. Corrigido pra `tstzrange`. `CLAUDE.md` já atualizado com a versão
+certa.
+
+**Tratamento de erro:** violação da constraint gera SQLSTATE `23P01` (exclusion_violation), classe
+diferente de `23505`/`P2002` (unique_violation) que `translateConflict()` (`appointments.service.ts`)
+já tratava. O Prisma não tem um P-code próprio pra isso — chega como `PrismaClientUnknownRequestError`
+(sem `code` estruturado), então o reconhecimento é por `err.message.includes('23P01')`. Mesma
+mensagem amigável de sempre em `409`: "Esse profissional já tem outro atendimento nesse horário."
+
+**Teste novo:** `test/appointments/appointments-crud.e2e-spec.ts` — dois clientes diferentes, mesmo
+profissional, segundo horário com `starts_at` diferente do primeiro mas intervalo sobreposto (metade
+da duração depois) → `409`. Suíte completa rodada depois: 139/142, as mesmas 2 falhas pré-existentes
+de sempre (`admin-plans`, `connection-pool-leak`), nada novo quebrado.
+
+### ⏳ Sprint 23 — [Backend] Timezone por tenant — decisão conscientemente adiada, não "a fazer"
+O schema não modela fuso horário — tudo tratado como hora local da barbearia via
+`nowInBarbershopTime()` fixo em `America/Sao_Paulo`. Registrado no `CLAUDE.md` como débito técnico
+documentado. **Só revisitar se o mercado deixar de ser só Brasil** — não implementar sem essa
+validação.
+
+### ⏳ Sprint 24 — [Backend] Identidade global de usuário (`users` + `tenant_users`) — decisão conscientemente adiada, não "a fazer"
+Hoje `UNIQUE(tenant_id, email)` permite o mesmo e-mail como identidades separadas em tenants
+diferentes. Evolução futura mapeada no `CLAUDE.md`, mas **só revisitar com demanda real validada** —
+não implementar sem isso.
+
+### ⏳ Sprint 25 — [App Cliente] Tela "Horários de Funcionamento" conectada à API real — não iniciado
+Hoje mostra dados mockados/hardcoded (achado na sessão de QA, `CENARIOS_TESTE_BARBEARIA.xlsx`), não
+os `working_hours` reais daquele profissional/tenant vindos da API.
+
+### ⏳ Sprint 26 — [Compliance] Conformidade com LGPD — escopo ainda não detalhado
+Registrada como pendência no `CLAUDE.md` (revisão 2026-10-18). O que já existe ajuda mas não foi
+pensado especificamente pra isso (TLS em trânsito, bcrypt em repouso, RLS entre barbearias). Falta
+escopo real: base legal/consentimento, política de privacidade, direitos do titular, contrato de
+tratamento de dados com os fornecedores (Supabase/Render/Vercel), retenção, notificação de
+vazamento. Usuário vai especificar o escopo antes de iniciar.
+
+### ⏳ Sprint 27 — [Backend] Agendamento `scheduled` com horário passado, sem expurgo — decisão conscientemente adiada, não "a fazer"
+Sem cron/job no projeto — status só muda por ação manual do admin. Ficou visível na Agenda do painel
+depois que a tela passou a mostrar dias anteriores (achado 24/10/2026). **Decisão consciente: não
+implementar nenhuma ação agora** (nem aviso visual, nem expurgo automático) — admin decide quando
+agir; se não agir, a ideia é "expurgar ao longo do tempo" no futuro, sem regra definida ainda.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
