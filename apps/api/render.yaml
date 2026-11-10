@@ -5,7 +5,12 @@ services:
     plan: starter
     region: oregon
     rootDir: apps/api
-    buildCommand: npm install && npm run prisma:generate && npm run build
+    # --include=dev é obrigatório: com NODE_ENV=production o npm pula
+    # devDependencies por padrão, e "nest build" vem do @nestjs/cli (dev).
+    # Sem isso o build falha com "sh: 1: nest: not found" (achado 10/11/2026 -
+    # esse fix já tinha sido aplicado direto no dashboard do Render antes, mas
+    # nunca foi commitado aqui, e o serviço sincroniza a partir deste arquivo).
+    buildCommand: npm install --include=dev && npm run prisma:generate && npm run build
     startCommand: npm run prisma:migrate:deploy && npm run start:prod
     healthCheckPath: /health
     envVars:
