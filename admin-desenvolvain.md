@@ -627,6 +627,20 @@ o problema de latência, já que a API continua em Oregon. **Decisão:** não te
 a correção de região de verdade (criar o serviço do zero já escolhendo Ohio na tela de criação, antes
 de clicar em criar — não dá pra corrigir depois) fica pra quando o ambiente de Produção for criado.
 
+**Achado operacional importante (10/11/2026):** `apps/api/render.yaml` **não controla** esse serviço.
+Confirmado na prática — corrigimos o `buildCommand` no arquivo (adicionando `--include=dev`, pra não
+pular `@nestjs/cli` que é devDependency, causa de um `Build failed` real) e demos push; o deploy
+seguinte rodou com o comando **antigo**, sem o fix, provando que o Render não está lendo esse arquivo
+pra esse serviço. Motivo: `barberaria-api-homolog` foi criado/é gerenciado manualmente pelo painel do
+Render (não como "Blueprint" sincronizado do `render.yaml`) — provavelmente desde a criação original
+do serviço (`barberaria-api`, Sprint 1), antes até do episódio de rename acima. **Correção de verdade
+só funcionou editando o Build Command direto no dashboard do Render.** `render.yaml` continua no
+repo como referência/documentação de como o serviço *deveria* estar configurado, mas qualquer mudança
+de configuração de deploy nesse serviço precisa ser replicada manualmente no painel — editar só o
+arquivo não tem efeito. Relevante pra quando Produção for criada: se for criada via Blueprint de
+verdade (New → Blueprint, lendo este arquivo), esse problema não se repete; se for criada manualmente
+como essa, o mesmo cuidado vale lá.
+
 ### ⏳ Sprint 12 — [Painel Master] Impersonação ("Acessar como admin") — não iniciado
 Elevação de privilégio — token de vida curta, log obrigatório, revisão de segurança dedicada antes
 de shippar. Pode rodar independente dos sprints de billing.
