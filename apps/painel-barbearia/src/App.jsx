@@ -1668,6 +1668,18 @@ const Clube = () => {
 };
 
 // ─── FINANCEIRO (fora de navegação, código mantido) ────────
+// Máscara de valor monetário BR: últimos 2 dígitos digitados são os centavos,
+// o resto forma a parte inteira com separador de milhar — mesmo princípio do
+// formatPhoneMask acima, aplicado progressivamente conforme o usuário digita.
+const formatCurrencyMask = (raw) => {
+  const digits = String(raw).replace(/\D/g, "");
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  const reais = Math.floor(cents / 100);
+  const centavos = cents % 100;
+  return reais.toLocaleString("pt-BR") + "," + String(centavos).padStart(2, "0");
+};
+
 const EXPENSE_CATEGORY_LABELS = { insumos: "Insumos", fixas: "Fixas", outras: "Outras" };
 const EXPENSE_PAYMENT_LABELS = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro", transferencia: "Transferência" };
 
@@ -1758,7 +1770,7 @@ function Financeiro() {
     setForm({
       category: e.category,
       description: e.description,
-      amountReais: (e.amountCents / 100).toFixed(2).replace(".", ","),
+      amountReais: formatCurrencyMask(String(e.amountCents)),
       paymentMethod: e.paymentMethod,
       expenseDate: e.expenseDate.slice(0, 10),
     });
@@ -1770,7 +1782,7 @@ function Financeiro() {
     setSaving(true);
     setError("");
     try {
-      const amountCents = Math.round(parseFloat(form.amountReais.replace(",", ".")) * 100);
+      const amountCents = parseInt(form.amountReais.replace(/\D/g, ""), 10);
       if (!form.description || Number.isNaN(amountCents) || amountCents <= 0 || !form.expenseDate) {
         throw new Error("Preencha descrição, valor e data corretamente.");
       }
@@ -1922,7 +1934,7 @@ function Financeiro() {
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, marginBottom: 16 }}>
               <div style={isMobile ? {} : { flex: 1, minWidth: 120 }}>
                 <FieldLabel>Valor (R$)</FieldLabel>
-                <input value={form.amountReais} onChange={(e) => setForm((f) => ({ ...f, amountReais: e.target.value }))} placeholder="0,00" style={fieldStyle} />
+                <input value={form.amountReais} onChange={(e) => setForm((f) => ({ ...f, amountReais: formatCurrencyMask(e.target.value) }))} placeholder="0,00" style={fieldStyle} />
               </div>
               <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
                 <FieldLabel>Forma de pagamento</FieldLabel>
@@ -1945,27 +1957,60 @@ function Financeiro() {
           </div>
         )}
 
-        <div className="themed-scroll" style={{ maxHeight: 320, overflowY: "auto", marginTop: editing === null ? 10 : 0 }}>
+        <div className="themed-scroll" style={{ maxHeight: 320, overflowY: "auto", overflowX: "auto", marginTop: editing === null ? 10 : 0 }}>
           {loading ? (
             <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>
           ) : expenses.length === 0 ? (
             <div style={{ padding: "24px 20px", fontSize: 12.5, color: T.muted, textAlign: "center" }}>Nenhuma despesa lançada nesse período.</div>
+          ) : isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "0 20px 14px" }}>
+              {expenses.map((e) => (
+                <div key={e.id} style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: 10, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
+                    <Badge color="#F25C5C" small>{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</Badge>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: T.muted }}>
+                      {new Date(e.expenseDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: T.text, marginBottom: 8 }}>{e.description}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: T.muted }}>{EXPENSE_PAYMENT_LABELS[e.paymentMethod] ?? e.paymentMethod}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{formatPrice(e.amountCents)}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+                    <span onClick={() => startEdit(e)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+                    <span onClick={() => remove(e.id)} style={{ fontSize: 12, color: "#F25C5C", cursor: "pointer" }}>Excluir</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
-            expenses.map((e) => (
-              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-                <div style={{ width: 70, fontSize: 12, fontWeight: 700, color: T.muted, flexShrink: 0 }}>
-                  {new Date(e.expenseDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}
-                </div>
-                <Badge color="#F25C5C" small>{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</Badge>
-                <div style={{ flex: 1, minWidth: isMobile ? "100%" : 0, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "normal" : "nowrap" }}>{e.description}</div>
-                <div style={{ fontSize: 12, color: T.muted, flexShrink: 0 }}>{EXPENSE_PAYMENT_LABELS[e.paymentMethod] ?? e.paymentMethod}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: T.text, flexShrink: 0 }}>{formatPrice(e.amountCents)}</div>
-                <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
-                  <span onClick={() => startEdit(e)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
-                  <span onClick={() => remove(e.id)} style={{ fontSize: 12, color: "#F25C5C", cursor: "pointer" }}>Excluir</span>
-                </div>
-              </div>
-            ))
+            <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border}` }}>
+                  {["Data", "Tipo", "Item", "Forma de Pgto", "Valor", ""].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((e) => (
+                  <tr key={e.id} className="bb-row" style={{ borderBottom: `1px solid ${T.border}` }}>
+                    <td style={{ padding: "12px 20px", fontSize: 12, fontWeight: 700, color: T.muted, whiteSpace: "nowrap" }}>
+                      {new Date(e.expenseDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}
+                    </td>
+                    <td style={{ padding: "12px 20px" }}>
+                      <Badge color="#F25C5C" small>{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</Badge>
+                    </td>
+                    <td style={{ padding: "12px 20px", fontSize: 13, color: T.text }}>{e.description}</td>
+                    <td style={{ padding: "12px 20px", fontSize: 12, color: T.muted, whiteSpace: "nowrap" }}>{EXPENSE_PAYMENT_LABELS[e.paymentMethod] ?? e.paymentMethod}</td>
+                    <td style={{ padding: "12px 20px", fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap" }}>{formatPrice(e.amountCents)}</td>
+                    <td style={{ padding: "12px 20px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      <span onClick={() => startEdit(e)} style={{ fontSize: 12, color: T.gold, cursor: "pointer", marginRight: 14 }}>Editar</span>
+                      <span onClick={() => remove(e.id)} style={{ fontSize: 12, color: "#F25C5C", cursor: "pointer" }}>Excluir</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
