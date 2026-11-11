@@ -1737,8 +1737,14 @@ function Financeiro() {
 
   const load = () => {
     setLoading(true);
+    // "to" vai até o fim do dia de hoje (não o instante exato de "agora"),
+    // senão um agendamento concluído mais tarde no mesmo dia (ex: marcado às
+    // 16h pra um horário das 16:30) fica fora do período por startsAt > to.
     const to = new Date(nowInBarbershopTime());
-    const from = new Date(to.getTime() - periodDays * 24 * 60 * 60_000);
+    to.setUTCHours(23, 59, 59, 999);
+    const from = new Date(to);
+    from.setUTCDate(from.getUTCDate() - (periodDays - 1));
+    from.setUTCHours(0, 0, 0, 0);
     const fromIso = from.toISOString();
     const toIso = to.toISOString();
 
