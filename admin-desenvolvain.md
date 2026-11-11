@@ -1026,7 +1026,7 @@ depois que a tela passou a mostrar dias anteriores (achado 24/10/2026). **Decis�
 implementar nenhuma ação agora** (nem aviso visual, nem expurgo automático) — admin decide quando
 agir; se não agir, a ideia é "expurgar ao longo do tempo" no futuro, sem regra definida ainda.
 
-### ⏳ Sprint 28 — [Painel da Barbearia] Módulo Financeiro (Despesas + Receita) — planejado (11/11/2026), dividido em 2 etapas
+### ✅ Sprint 28 — [Painel da Barbearia] Módulo Financeiro (Despesas + Receita) — concluído (11/11/2026), em 2 etapas
 
 **Origem:** protótipo visual aprovado em link do Artifact (tela "Dashboard do Dono" + "Financeiro"),
 pedido explícito do usuário de um item novo "Financeiro" no menu do painel, abaixo de Serviços, nos
@@ -1141,7 +1141,7 @@ sprints anteriores — `startCommand` roda `prisma:migrate:deploy` antes de subi
 
 ---
 
-#### ⏳ Sprint 28.2 — Frontend (`painel-barbearia`)
+#### ✅ Sprint 28.2 — Frontend (`painel-barbearia`) — concluído (11/11/2026)
 
 Depende da 28.1 concluída e validada (consome a API já provada, não constrói contra um contrato
 hipotético).
@@ -1164,7 +1164,36 @@ estabelecido no projeto, seção 3 do `CLAUDE.md`):
 despesa fixa; exportação real (botão "Exportar" do protótipo continua só visual); edição de despesa
 pelo barbeiro (fica admin-only).
 
-**Status:** não iniciado — aguardando 28.1.
+**Implementado:**
+- `src/App.jsx` tinha, desde o protótipo original, um componente `Financeiro` mockado (P&L completo com
+  Receitas/Despesas/Deduções/Lucro Líquido, dado hardcoded) marcado "fora de navegação, código mantido"
+  (seção 3 do `CLAUDE.md`) — escopo bem mais amplo que o aprovado aqui. Foi **substituído por inteiro**
+  (não conectado incrementalmente) pelo componente real, já que o P&L antigo não corresponde ao desenho
+  aprovado nesta sprint. `render()` já tinha `if (page === "financeiro") return <Financeiro />;` desde
+  sempre (código morto, nunca alcançável sem item de menu) — só precisou do item no `Sidebar`.
+- Gráfico "Receita x Despesas": o backend (28.1) só devolve totais agregados do período, sem série
+  temporal. Resolvido no cliente — busca os agendamentos `completed` e despesas do período via as
+  rotas que já existiam (`listAppointments`, `listExpenses`) e distribui em 7 baldes de largura igual
+  (`buildFinanceChartBuckets`). É só visual/tendência; os números oficiais (KPIs, despesas por
+  categoria) vêm direto do `summary`.
+- **Achado de infra (11/11/2026):** o build de produção (`vite build`) do painel-barbearia passou a
+  falhar de forma determinística e reproduzível (`[vite:html-inline-proxy] Could not load
+  .../index.html?html-proxy&inline-css&index=0.css`) ao combinar duas mudanças aparentemente inofensivas
+  no mesmo arquivo (um novo import nomeado + uma nova entrada no array do menu) — isolado por bissecção
+  manual (múltiplas combinações testadas) até restar só essas duas, sem relação semântica entre si.
+  Causa: bug conhecido do Vite 5.4.21 no plugin `html-inline-proxy` ao processar um `<style>` inline
+  dentro do `index.html` (aqui, o CSS da `.themed-scroll` adicionado numa sessão anterior) combinado com
+  mudanças no grafo de módulos JS — não é um erro de sintaxe (o arquivo passa limpo por `esbuild`).
+  **Corrigido** movendo esse CSS para `src/index.css`, importado normalmente em `main.jsx` (padrão
+  Vite mais comum que `<style>` inline em `index.html`), em vez de depender de uma ordem de import
+  específica para não acionar o bug.
+- **Verificação:** sem ferramenta de browser disponível neste ambiente para um teste visual real —
+  `npm run build` limpo (`vite build`, 75 módulos) e teste end-to-end manual via `curl`, simulando a
+  sequência exata de chamadas que a tela faz (login → `GET /financeiro/summary` → `POST`/`PATCH`/
+  `DELETE /expenses` → `GET /financeiro/summary` de novo), com tenant/dados de smoke criados e
+  removidos via Prisma direto. Formato das respostas bate exatamente com o que o componente espera.
+
+**Status:** concluído. Sprint 28 (28.1 + 28.2) completa.
 
 ## 7. Testes
 

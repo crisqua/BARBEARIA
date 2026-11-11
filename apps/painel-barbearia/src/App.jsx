@@ -3,16 +3,20 @@ import {
   assignService,
   cancelAppointment,
   completeAppointment,
+  createExpense,
   createProfessional,
   createService,
   createWorkingHour,
+  deleteExpense,
   deleteWorkingHour,
   getAccessToken,
   getAvailability,
+  getFinanceiroSummary,
   getMe,
   getMyTenant,
   getUser,
   listAppointments,
+  listExpenses,
   listProfessionalServices,
   listProfessionals,
   listServices,
@@ -23,6 +27,7 @@ import {
   setAccessToken,
   setSessionExpiredHandler,
   unassignService,
+  updateExpense,
   updateMyTenant,
   updateProfessional,
   updateService,
@@ -244,6 +249,7 @@ const Sidebar = ({ active, setActive, user, onLogout, isMobile, open, onClose })
         { id: "agenda", icon: "◷", label: "Agenda" },
         { id: "profissionais", icon: "◉", label: "Profissionais" },
         { id: "servicos", icon: "✂", label: "Serviços" },
+        { id: "financeiro", icon: "$", label: "Financeiro" },
       ],
     },
     { label: null, items: [{ id: "config", icon: "⚙", label: "Configurações" }] },
@@ -1662,104 +1668,310 @@ const Clube = () => {
 };
 
 // ─── FINANCEIRO (fora de navegação, código mantido) ────────
-const Financeiro = () => {
-  const [tab, setTab] = useState("resumo");
-  const receitas = [
-    { desc: "Atendimentos (55)", valor: "R$ 3.300,00" },
-    { desc: "Venda de produtos", valor: "R$ 680,00" },
-    { desc: "Assinaturas (3)", valor: "R$ 360,00" },
-  ];
-  const despesas = [
-    { desc: "Aluguel do salão", valor: "R$ 2.200,00", categoria: "Fixa" },
-    { desc: "Compra de produtos (fornecedor)", valor: "R$ 540,00", categoria: "Variável" },
-    { desc: "Energia elétrica", valor: "R$ 320,00", categoria: "Fixa" },
-    { desc: "Comissões a pagar", valor: "R$ 1.650,00", categoria: "Variável" },
-  ];
-  const deducoes = [
-    { desc: "Simples Nacional", valor: "R$ 410,00" },
-    { desc: "Taxas de cartão", valor: "R$ 145,00" },
-  ];
+const EXPENSE_CATEGORY_LABELS = { insumos: "Insumos", fixas: "Fixas", outras: "Outras" };
+const EXPENSE_PAYMENT_LABELS = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro", transferencia: "Transferência" };
+
+/**
+ * O backend (Sprint 28.1) só devolve totais agregados do período
+ * (GET /financeiro/summary), sem série temporal — o gráfico "Receita x
+ * Despesas" é construído aqui no cliente, dividindo o período em 7 baldes
+ * de largura igual e somando os agendamentos concluídos (receita) e
+ * despesas (despesasCents) que caem em cada um. É só visual/tendência;
+ * os números oficiais (KPIs, despesas por categoria) vêm direto do summary.
+ */
+const buildFinanceChartBuckets = (from, to, completedAppointments, servicePriceCentsById, expenses) => {
+  const BUCKET_COUNT = 7;
+  const totalMs = Math.max(to.getTime() - from.getTime(), 1);
+  const bucketMs = totalMs / BUCKET_COUNT;
+  const buckets = Array.from({ length: BUCKET_COUNT }, (_, i) => ({
+    label: new Date(from.getTime() + i * bucketMs).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }),
+    receitaCents: 0,
+    despesasCents: 0,
+  }));
+  const bucketIndex = (t) => Math.min(Math.max(Math.floor((t - from.getTime()) / bucketMs), 0), BUCKET_COUNT - 1);
+
+  completedAppointments.forEach((a) => {
+    buckets[bucketIndex(new Date(a.startsAt).getTime())].receitaCents += servicePriceCentsById[a.serviceId] ?? 0;
+  });
+  expenses.forEach((e) => {
+    buckets[bucketIndex(new Date(e.expenseDate).getTime())].despesasCents += e.amountCents;
+  });
+
+  return buckets;
+};
+
+function Financeiro() {
+  const isMobile = useIsMobile();
+  const [period, setPeriod] = useState("7d");
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState(null);
+  const [chartBuckets, setChartBuckets] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [categoryFilter, setCategoryFilter] = useState("todas");
+  const [editing, setEditing] = useState(null); // null | "new" | id
+  const [form, setForm] = useState({ category: "insumos", description: "", amountReais: "", paymentMethod: "pix", expenseDate: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const periodDays = period === "7d" ? 7 : period === "30d" ? 30 : 90;
+
+  const load = () => {
+    setLoading(true);
+    const to = new Date(nowInBarbershopTime());
+    const from = new Date(to.getTime() - periodDays * 24 * 60 * 60_000);
+    const fromIso = from.toISOString();
+    const toIso = to.toISOString();
+
+    return Promise.all([
+      getFinanceiroSummary(fromIso, toIso),
+      listAppointments({ status: "completed", from: fromIso, to: toIso }),
+      listServices(),
+      listExpenses({
+        from: fromIso.slice(0, 10),
+        to: toIso.slice(0, 10),
+        ...(categoryFilter !== "todas" ? { category: categoryFilter } : {}),
+      }),
+    ])
+      .then(([summaryRes, apptRes, servicesRes, expensesRes]) => {
+        setSummary(summaryRes);
+        setExpenses(expensesRes.items);
+
+        const servicePriceCentsById = {};
+        servicesRes.items.forEach((s) => { servicePriceCentsById[s.id] = s.priceCents; });
+        setChartBuckets(buildFinanceChartBuckets(from, to, apptRes.items, servicePriceCentsById, expensesRes.items));
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [period, categoryFilter]);
+
+  const startNew = () => {
+    setForm({
+      category: "insumos", description: "", amountReais: "", paymentMethod: "pix",
+      expenseDate: new Date(nowInBarbershopTime()).toISOString().slice(0, 10),
+    });
+    setError("");
+    setEditing("new");
+  };
+
+  const startEdit = (e) => {
+    setForm({
+      category: e.category,
+      description: e.description,
+      amountReais: (e.amountCents / 100).toFixed(2).replace(".", ","),
+      paymentMethod: e.paymentMethod,
+      expenseDate: e.expenseDate.slice(0, 10),
+    });
+    setError("");
+    setEditing(e.id);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const amountCents = Math.round(parseFloat(form.amountReais.replace(",", ".")) * 100);
+      if (!form.description || Number.isNaN(amountCents) || amountCents <= 0 || !form.expenseDate) {
+        throw new Error("Preencha descrição, valor e data corretamente.");
+      }
+      const payload = {
+        category: form.category,
+        description: form.description,
+        amountCents,
+        paymentMethod: form.paymentMethod,
+        expenseDate: form.expenseDate,
+      };
+      if (editing === "new") {
+        await createExpense(payload);
+      } else {
+        await updateExpense(editing, payload);
+      }
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setError(err.message || "Não foi possível salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Excluir essa despesa? Essa ação não pode ser desfeita.")) return;
+    await deleteExpense(id);
+    await load();
+  };
+
+  const maxChart = Math.max(1, ...chartBuckets.flatMap((b) => [b.receitaCents, b.despesasCents]));
+  const maxCategoria = Math.max(1, ...(summary?.despesasPorCategoria.map((c) => c.totalCents) ?? [1]));
+
   return (
-    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Financeiro</div>
-        <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Junho 2025 · Fluxo de caixa</div>
-      </div>
-      <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-        <Stat label="Receita Bruta" value="R$ 4.340" sub="+9% vs maio" />
-        <Stat label="Despesas" value="R$ 4.710" sub="fixas + variáveis" />
-        <Stat label="Deduções" value="R$ 555" sub="impostos e taxas" />
-        <Stat label="Lucro Líquido" value="-R$ 925" sub="atenção este mês" />
-      </div>
-      <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: `1px solid ${T.border}` }}>
-        {[["resumo", "Resumo"], ["receitas", "Receitas"], ["despesas", "Despesas"], ["deducoes", "Deduções"]].map(([id, label]) => (
-          <div key={id} onClick={() => setTab(id)} style={{
-            padding: "10px 18px", cursor: "pointer", fontSize: 13, fontWeight: 600,
-            color: tab === id ? T.gold : T.muted,
-            borderBottom: tab === id ? `2px solid ${T.gold}` : "2px solid transparent",
-          }}>{label}</div>
-        ))}
-      </div>
-
-      {tab === "resumo" && (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${T.bg}` }}>
-            <span style={{ fontSize: 13, color: T.success, fontWeight: 600 }}>+ Total de Receitas</span>
-            <span style={{ fontSize: 13, color: T.success, fontWeight: 700 }}>R$ 4.340,00</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${T.bg}` }}>
-            <span style={{ fontSize: 13, color: "#F25C5C", fontWeight: 600 }}>− Total de Despesas</span>
-            <span style={{ fontSize: 13, color: "#F25C5C", fontWeight: 700 }}>R$ 4.710,00</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${T.bg}` }}>
-            <span style={{ fontSize: 13, color: T.warning, fontWeight: 600 }}>− Deduções e Taxas</span>
-            <span style={{ fontSize: 13, color: T.warning, fontWeight: 700 }}>R$ 555,00</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "14px 0 0", marginTop: 8 }}>
-            <span style={{ fontSize: 14, color: T.text, fontWeight: 800 }}>Resultado do mês</span>
-            <span style={{ fontSize: 16, color: "#F25C5C", fontWeight: 800 }}>− R$ 925,00</span>
-          </div>
+    <div style={{ padding: isMobile ? 16 : 32, overflowY: "auto", flex: 1, background: T.bg }}>
+      <div style={{ marginBottom: 24, display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 12 : 0, justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>Controle Financeiro</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>Receitas, despesas e saldo do período selecionado</div>
         </div>
-      )}
-
-      {tab === "receitas" && (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-          {receitas.map((r, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "14px 20px", borderBottom: i < receitas.length - 1 ? `1px solid ${T.bg}` : "none" }}>
-              <span style={{ fontSize: 13, color: T.text }}>{r.desc}</span>
-              <span style={{ fontSize: 13, color: T.success, fontWeight: 700 }}>{r.valor}</span>
-            </div>
+        <div style={{ display: "flex", background: T.card, border: `1px solid ${T.border}`, borderRadius: 8, padding: 3 }}>
+          {[["7d", "7 dias"], ["30d", "30 dias"], ["90d", "90 dias"]].map(([id, label]) => (
+            <div key={id} onClick={() => setPeriod(id)} style={{
+              padding: "7px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700,
+              background: period === id ? T.gold : "transparent",
+              color: period === id ? T.bg : T.muted,
+            }}>{label}</div>
           ))}
         </div>
-      )}
+      </div>
 
-      {tab === "despesas" && (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-          {despesas.map((d, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderBottom: i < despesas.length - 1 ? `1px solid ${T.bg}` : "none" }}>
-              <div>
-                <span style={{ fontSize: 13, color: T.text }}>{d.desc}</span>
-                <Badge color={T.muted}>{d.categoria}</Badge>
+      {!summary ? (
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, fontSize: 12, color: T.muted, marginBottom: 24 }}>Carregando…</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+            <Stat label="Receita" value={formatPrice(summary.receitaCents)} sub="atendimentos concluídos" />
+            <Stat label="Despesas" value={formatPrice(summary.despesasCents)} />
+            <Stat label="Saldo" value={formatPrice(summary.saldoCents)} />
+            <Stat label="Ticket Médio" value={formatPrice(summary.ticketMedioCents)} />
+          </div>
+
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 24, alignItems: "stretch" }}>
+            <div style={{ flex: "2 1 420px", minWidth: 0, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Receita x Despesas</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 16, height: 148, marginTop: 20, padding: "0 4px" }}>
+                {chartBuckets.map((b, i) => (
+                  <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, height: "100%", justifyContent: "flex-end" }}>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 120 }}>
+                      <div style={{ width: 14, height: Math.round((b.receitaCents / maxChart) * 120), background: T.gold, borderRadius: "4px 4px 2px 2px" }} />
+                      <div style={{ width: 14, height: Math.round((b.despesasCents / maxChart) * 120), background: "#F25C5C", borderRadius: "4px 4px 2px 2px" }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted }}>{b.label}</div>
+                  </div>
+                ))}
               </div>
-              <span style={{ fontSize: 13, color: "#F25C5C", fontWeight: 700 }}>{d.valor}</span>
+              <div style={{ display: "flex", gap: 18, marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.border}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: T.gold, display: "inline-block" }} /> Receita
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: "#F25C5C", display: "inline-block" }} /> Despesas
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+
+            <div style={{ flex: "1 1 300px", minWidth: 240, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Despesas por Categoria</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
+                {summary.despesasPorCategoria.length === 0 && (
+                  <div style={{ fontSize: 12, color: T.muted }}>Nenhuma despesa no período.</div>
+                )}
+                {summary.despesasPorCategoria.map((c) => (
+                  <div key={c.category}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
+                      <span style={{ color: T.text }}>{EXPENSE_CATEGORY_LABELS[c.category] ?? c.category}</span>
+                      <span style={{ color: T.muted }}>{formatPrice(c.totalCents)}</span>
+                    </div>
+                    <div style={{ height: 6, background: T.border, borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.round((c.totalCents / maxCategoria) * 100)}%`, background: "#F25C5C", borderRadius: 4 }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
-      {tab === "deducoes" && (
-        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-          {deducoes.map((d, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "14px 20px", borderBottom: i < deducoes.length - 1 ? `1px solid ${T.bg}` : "none" }}>
-              <span style={{ fontSize: 13, color: T.text }}>{d.desc}</span>
-              <span style={{ fontSize: 13, color: T.warning, fontWeight: 700 }}>{d.valor}</span>
-            </div>
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Despesas</div>
+            <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>{expenses.length} lançamento(s) no período</div>
+          </div>
+          <div onClick={startNew} style={{ background: T.gold, borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, color: T.bg, cursor: "pointer" }}>+ Nova Despesa</div>
+        </div>
+
+        <div style={{ padding: "14px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[["todas", "Todas"], ["insumos", "Insumos"], ["fixas", "Fixas"], ["outras", "Outras"]].map(([id, label]) => (
+            <div key={id} onClick={() => setCategoryFilter(id)} style={{
+              padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 700,
+              background: categoryFilter === id ? T.gold : T.bg,
+              color: categoryFilter === id ? T.bg : T.muted,
+            }}>{label}</div>
           ))}
         </div>
-      )}
+
+        {editing !== null && (
+          <div style={{ margin: "16px 20px", background: T.surface, border: `1.5px solid ${T.gold}55`, borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, marginBottom: 16 }}>
+              {editing === "new" ? "Nova Despesa" : "Editar Despesa"}
+            </div>
+            {error && <ErrorBox>{error}</ErrorBox>}
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, marginBottom: 12 }}>
+              <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
+                <FieldLabel>Categoria</FieldLabel>
+                <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={fieldStyle}>
+                  <option value="insumos">Insumos</option>
+                  <option value="fixas">Fixas</option>
+                  <option value="outras">Outras</option>
+                </select>
+              </div>
+              <div style={isMobile ? {} : { flex: 2, minWidth: 200 }}>
+                <FieldLabel>Descrição</FieldLabel>
+                <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Ex: Produtos de barbearia" style={fieldStyle} />
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, marginBottom: 16 }}>
+              <div style={isMobile ? {} : { flex: 1, minWidth: 120 }}>
+                <FieldLabel>Valor (R$)</FieldLabel>
+                <input value={form.amountReais} onChange={(e) => setForm((f) => ({ ...f, amountReais: e.target.value }))} placeholder="0,00" style={fieldStyle} />
+              </div>
+              <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
+                <FieldLabel>Forma de pagamento</FieldLabel>
+                <select value={form.paymentMethod} onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))} style={fieldStyle}>
+                  <option value="pix">Pix</option>
+                  <option value="cartao">Cartão</option>
+                  <option value="dinheiro">Dinheiro</option>
+                  <option value="transferencia">Transferência</option>
+                </select>
+              </div>
+              <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
+                <FieldLabel>Data</FieldLabel>
+                <input type="date" value={form.expenseDate} onChange={(e) => setForm((f) => ({ ...f, expenseDate: e.target.value }))} style={fieldStyle} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div onClick={saving ? undefined : save} style={{ background: T.gold, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 700, color: T.bg, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>{saving ? "Salvando..." : "Salvar"}</div>
+              <div onClick={() => setEditing(null)} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, color: T.muted, cursor: "pointer" }}>Cancelar</div>
+            </div>
+          </div>
+        )}
+
+        <div className="themed-scroll" style={{ maxHeight: 320, overflowY: "auto", marginTop: editing === null ? 10 : 0 }}>
+          {loading ? (
+            <div style={{ padding: 20, fontSize: 12, color: T.muted }}>Carregando…</div>
+          ) : expenses.length === 0 ? (
+            <div style={{ padding: "24px 20px", fontSize: 12.5, color: T.muted, textAlign: "center" }}>Nenhuma despesa lançada nesse período.</div>
+          ) : (
+            expenses.map((e) => (
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", borderBottom: `1px solid ${T.border}`, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+                <div style={{ width: 70, fontSize: 12, fontWeight: 700, color: T.muted, flexShrink: 0 }}>
+                  {new Date(e.expenseDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}
+                </div>
+                <Badge color="#F25C5C" small>{EXPENSE_CATEGORY_LABELS[e.category] ?? e.category}</Badge>
+                <div style={{ flex: 1, minWidth: isMobile ? "100%" : 0, fontSize: 13, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isMobile ? "normal" : "nowrap" }}>{e.description}</div>
+                <div style={{ fontSize: 12, color: T.muted, flexShrink: 0 }}>{EXPENSE_PAYMENT_LABELS[e.paymentMethod] ?? e.paymentMethod}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text, flexShrink: 0 }}>{formatPrice(e.amountCents)}</div>
+                <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+                  <span onClick={() => startEdit(e)} style={{ fontSize: 12, color: T.gold, cursor: "pointer" }}>Editar</span>
+                  <span onClick={() => remove(e.id)} style={{ fontSize: 12, color: "#F25C5C", cursor: "pointer" }}>Excluir</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
-};
+}
 
 // ─── NOTIFICAR PROMOÇÕES (fora de navegação, código mantido) ─
 const Marketing = () => {

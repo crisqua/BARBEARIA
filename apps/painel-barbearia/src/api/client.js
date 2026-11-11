@@ -201,3 +201,18 @@ export const rescheduleAppointment = (id, startsAt) =>
 
 export const getAvailability = (professionalId, serviceId, date) =>
   apiFetch(`/v1/professionals/${professionalId}/availability?serviceId=${serviceId}&date=${date}`);
+
+// ─── Financeiro (Sprint 28) ────────────────────────────
+export const listExpenses = (params = {}) => {
+  const query = new URLSearchParams({ pageSize: "100", ...params }).toString();
+  return apiFetch(`/v1/expenses?${query}`);
+};
+
+export const createExpense = (data) => apiFetch("/v1/expenses", { method: "POST", body: data });
+
+export const updateExpense = (id, data) => apiFetch(`/v1/expenses/${id}`, { method: "PATCH", body: data });
+
+export const deleteExpense = (id) => apiFetch(`/v1/expenses/${id}`, { method: "DELETE" });
+
+export const getFinanceiroSummary = (from, to) =>
+  apiFetch(`/v1/financeiro/summary?from=${from}&to=${to}`);
