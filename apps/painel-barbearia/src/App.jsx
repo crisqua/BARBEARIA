@@ -394,7 +394,7 @@ function AppointmentActions({ appointment, onChanged }) {
         {appointment.status === "scheduled" && (
           <>
             <button disabled={busy} onClick={handleComplete} style={actionBtnStyle(T.success)}>Concluir</button>
-            <button disabled={busy} onClick={() => setReschedOpen((v) => !v)} style={actionBtnStyle(T.gold)}>
+            <button disabled={busy} onClick={() => setReschedOpen((v) => !v)} style={actionBtnStyle(T.warning)}>
               {reschedOpen ? "Fechar" : "Remarcar"}
             </button>
           </>
