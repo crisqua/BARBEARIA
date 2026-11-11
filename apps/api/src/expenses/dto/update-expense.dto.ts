@@ -1,12 +1,13 @@
 import { IsIn, IsInt, IsISO8601, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
-const CATEGORIES = ['insumos', 'fixas', 'outras'] as const;
 const PAYMENT_METHODS = ['pix', 'cartao', 'dinheiro', 'transferencia'] as const;
 
 export class UpdateExpenseDto {
   @IsOptional()
-  @IsIn(CATEGORIES)
-  category?: (typeof CATEGORIES)[number];
+  @IsString()
+  @MinLength(2)
+  @MaxLength(50)
+  category?: string;
 
   @IsOptional()
   @IsString()

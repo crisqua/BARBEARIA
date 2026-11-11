@@ -1,12 +1,11 @@
-import { IsIn, IsISO8601, IsOptional } from 'class-validator';
+import { IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
-
-const CATEGORIES = ['insumos', 'fixas', 'outras'] as const;
 
 export class ListExpensesQueryDto extends PaginationQueryDto {
   @IsOptional()
-  @IsIn(CATEGORIES)
-  category?: (typeof CATEGORIES)[number];
+  @IsString()
+  @MaxLength(50)
+  category?: string;
 
   @IsOptional()
   @IsISO8601()

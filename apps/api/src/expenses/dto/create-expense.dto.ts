@@ -1,11 +1,14 @@
 import { IsIn, IsInt, IsISO8601, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
-const CATEGORIES = ['insumos', 'fixas', 'outras'] as const;
 const PAYMENT_METHODS = ['pix', 'cartao', 'dinheiro', 'transferencia'] as const;
 
 export class CreateExpenseDto {
-  @IsIn(CATEGORIES)
-  category!: (typeof CATEGORIES)[number];
+  // Texto livre (Sprint 28.3) — "insumos"/"fixas"/"outras" fixas no frontend +
+  // categorias cadastradas por tenant via ExpenseCategory, não uma FK aqui.
+  @IsString()
+  @MinLength(2)
+  @MaxLength(50)
+  category!: string;
 
   @IsString()
   @MinLength(2)

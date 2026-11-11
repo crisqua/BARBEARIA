@@ -4,6 +4,7 @@ import {
   cancelAppointment,
   completeAppointment,
   createExpense,
+  createExpenseCategory,
   createProfessional,
   createService,
   createWorkingHour,
@@ -16,6 +17,7 @@ import {
   getMyTenant,
   getUser,
   listAppointments,
+  listExpenseCategories,
   listExpenses,
   listProfessionalServices,
   listProfessionals,
@@ -1724,6 +1726,12 @@ function Financeiro() {
   const [form, setForm] = useState({ category: "insumos", description: "", amountReais: "", paymentMethod: "pix", expenseDate: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Categorias cadastráveis por tenant (Sprint 28.3) — "insumos"/"fixas"/
+  // "outras" continuam fixas (sempre existem, sem linha no banco); aqui só
+  // ficam as que essa barbearia cadastrou a mais via "+ Nova categoria...".
+  const [customCategories, setCustomCategories] = useState([]);
+  const [newCategoryMode, setNewCategoryMode] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   const periodDays = period === "7d" ? 7 : period === "30d" ? 30 : 90;
 
@@ -1743,10 +1751,12 @@ function Financeiro() {
         to: toIso.slice(0, 10),
         ...(categoryFilter !== "todas" ? { category: categoryFilter } : {}),
       }),
+      listExpenseCategories(),
     ])
-      .then(([summaryRes, apptRes, servicesRes, expensesRes]) => {
+      .then(([summaryRes, apptRes, servicesRes, expensesRes, categoriesRes]) => {
         setSummary(summaryRes);
         setExpenses(expensesRes.items);
+        setCustomCategories(categoriesRes.map((c) => c.name));
 
         const servicePriceCentsById = {};
         servicesRes.items.forEach((s) => { servicePriceCentsById[s.id] = s.priceCents; });
@@ -1763,6 +1773,8 @@ function Financeiro() {
       expenseDate: new Date(nowInBarbershopTime()).toISOString().slice(0, 10),
     });
     setError("");
+    setNewCategoryMode(false);
+    setNewCategoryName("");
     setEditing("new");
   };
 
@@ -1775,6 +1787,8 @@ function Financeiro() {
       expenseDate: e.expenseDate.slice(0, 10),
     });
     setError("");
+    setNewCategoryMode(false);
+    setNewCategoryName("");
     setEditing(e.id);
   };
 
@@ -1812,6 +1826,45 @@ function Financeiro() {
     await deleteExpense(id);
     await load();
   };
+
+  const handleCategorySelect = (value) => {
+    if (value === "__new__") {
+      setNewCategoryMode(true);
+      return;
+    }
+    setForm((f) => ({ ...f, category: value }));
+  };
+
+  const confirmNewCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    try {
+      await createExpenseCategory(name);
+      setCustomCategories((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    } catch (err) {
+      // 409 = categoria já existe nesse tenant — segue normal, só usa ela.
+      if (err.status !== 409) {
+        setError(err.message || "Não foi possível criar a categoria.");
+        return;
+      }
+      setCustomCategories((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    }
+    setForm((f) => ({ ...f, category: name }));
+    setNewCategoryMode(false);
+    setNewCategoryName("");
+  };
+
+  const cancelNewCategory = () => {
+    setNewCategoryMode(false);
+    setNewCategoryName("");
+  };
+
+  const categoryOptions = [
+    { value: "insumos", label: "Insumos" },
+    { value: "fixas", label: "Fixas" },
+    { value: "outras", label: "Outras" },
+    ...customCategories.map((name) => ({ value: name, label: name })),
+  ];
 
   const maxChart = Math.max(1, ...chartBuckets.flatMap((b) => [b.receitaCents, b.despesasCents]));
   const maxCategoria = Math.max(1, ...(summary?.despesasPorCategoria.map((c) => c.totalCents) ?? [1]));
@@ -1902,7 +1955,7 @@ function Financeiro() {
         </div>
 
         <div style={{ padding: "14px 20px 0", display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {[["todas", "Todas"], ["insumos", "Insumos"], ["fixas", "Fixas"], ["outras", "Outras"]].map(([id, label]) => (
+          {[["todas", "Todas"], ...categoryOptions.map((opt) => [opt.value, opt.label])].map(([id, label]) => (
             <div key={id} onClick={() => setCategoryFilter(id)} style={{
               padding: "6px 12px", borderRadius: 20, cursor: "pointer", fontSize: 12, fontWeight: 700,
               background: categoryFilter === id ? T.gold : T.bg,
@@ -1920,11 +1973,26 @@ function Financeiro() {
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12, marginBottom: 12 }}>
               <div style={isMobile ? {} : { flex: 1, minWidth: 140 }}>
                 <FieldLabel>Categoria</FieldLabel>
-                <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={fieldStyle}>
-                  <option value="insumos">Insumos</option>
-                  <option value="fixas">Fixas</option>
-                  <option value="outras">Outras</option>
-                </select>
+                {newCategoryMode ? (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Nome da nova categoria"
+                      style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
+                      autoFocus
+                    />
+                    <div onClick={confirmNewCategory} style={{ background: T.gold, borderRadius: 8, padding: "0 14px", display: "flex", alignItems: "center", fontSize: 12, fontWeight: 700, color: T.bg, cursor: "pointer" }}>OK</div>
+                    <div onClick={cancelNewCategory} style={{ background: "transparent", border: `1px solid ${T.border}`, borderRadius: 8, padding: "0 12px", display: "flex", alignItems: "center", fontSize: 12, color: T.muted, cursor: "pointer" }}>✕</div>
+                  </div>
+                ) : (
+                  <select value={form.category} onChange={(e) => handleCategorySelect(e.target.value)} style={fieldStyle}>
+                    {categoryOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    <option value="__new__">+ Nova categoria...</option>
+                  </select>
+                )}
               </div>
               <div style={isMobile ? {} : { flex: 2, minWidth: 200 }}>
                 <FieldLabel>Descrição</FieldLabel>

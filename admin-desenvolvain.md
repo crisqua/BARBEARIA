@@ -1026,7 +1026,7 @@ depois que a tela passou a mostrar dias anteriores (achado 24/10/2026). **Decis�
 implementar nenhuma ação agora** (nem aviso visual, nem expurgo automático) — admin decide quando
 agir; se não agir, a ideia é "expurgar ao longo do tempo" no futuro, sem regra definida ainda.
 
-### ✅ Sprint 28 — [Painel da Barbearia] Módulo Financeiro (Despesas + Receita) — concluído (11/11/2026), em 2 etapas
+### ✅ Sprint 28 — [Painel da Barbearia] Módulo Financeiro (Despesas + Receita) — concluído (11/11/2026), em 3 etapas
 
 **Origem:** protótipo visual aprovado em link do Artifact (tela "Dashboard do Dono" + "Financeiro"),
 pedido explícito do usuário de um item novo "Financeiro" no menu do painel, abaixo de Serviços, nos
@@ -1193,7 +1193,71 @@ pelo barbeiro (fica admin-only).
   `DELETE /expenses` → `GET /financeiro/summary` de novo), com tenant/dados de smoke criados e
   removidos via Prisma direto. Formato das respostas bate exatamente com o que o componente espera.
 
-**Status:** concluído. Sprint 28 (28.1 + 28.2) completa.
+**Ajustes pós-teste manual (11/11/2026, usuário testou a tela real em homolog):**
+- Campo "Valor (R$)" ganhou máscara de moeda BR (`formatCurrencyMask`, mesmo princípio do
+  `formatPhoneMask` já existente) — sem máscara, digitar `25000` não ficava claro se era R$250,00 ou
+  R$25.000,00. Últimos 2 dígitos digitados são sempre os centavos.
+- Lista de despesas virou uma tabela de verdade no desktop (Data/Tipo/Item/Forma de Pgto/Valor + ações),
+  mesmo padrão de `Servicos()`; card empilhado no mobile.
+
+**Status:** concluído. Sprint 28 (28.1 + 28.2) completa — ver Sprint 28.3 abaixo (categorias de despesa
+cadastráveis por tenant, pedido como extensão direta desta sprint).
+
+#### ✅ Sprint 28.3 — Categorias de despesa cadastráveis por tenant — concluído (11/11/2026)
+
+**Origem:** usuário testou a tela real e perguntou se dava pra cadastrar categoria nova (em vez da lista
+fechada insumos/fixas/outras) — cada barbearia pode ter as suas. Protótipo da interação (dropdown com
+"+ Nova categoria..." abrindo um campo inline, sem tela nova) aprovado antes de implementar.
+
+**1. Schema — tabela nova `expense_categories`** (migration `0012_add_expense_categories`):
+```sql
+ALTER TABLE expenses ALTER COLUMN category TYPE VARCHAR(50);
+
+CREATE TABLE expense_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, name)
+);
+-- RLS tenant_isolation, igual todo resto
+```
+"Insumos"/"Fixas"/"Outras" continuam fixas no código (sempre existem, sem linha no banco) — essa tabela
+só guarda as que cada tenant adicionar além dessas 3. `expenses.category` deixou de validar contra uma
+lista fechada (`@IsIn`) e passou a aceitar texto livre (2-50 caracteres) — a tabela nova só alimenta o
+dropdown da tela, não trava o valor salvo na despesa (não é FK).
+
+**2. Backend — módulo novo `expense-categories` (admin-only):**
+| Rota | Descrição |
+|---|---|
+| `GET /v1/expense-categories` | Lista as categorias customizadas do tenant |
+| `POST /v1/expense-categories` | Cria uma (`{name}`) — `409` se já existir (unique por tenant) |
+
+**3. Frontend:** `Financeiro()` busca as categorias customizadas no load e junta com as 3 fixas no
+`<select>` de Categoria. Opção extra "+ Nova categoria..." no fim — ao escolher, troca o select por um
+input inline + OK/✕ (exatamente como no protótipo), chama `POST /expense-categories` (trata `409` como
+sucesso silencioso — a categoria já existe, só usa ela) e já aplica a categoria recém-criada na despesa
+sendo cadastrada. Abas de filtro (Todas/Insumos/Fixas/Outras) passaram a incluir as customizadas também.
+
+**4. Arquivos novos:** `apps/api/prisma/migrations/0012_add_expense_categories/`,
+`apps/api/src/expense-categories/` (module/controller/service/dto),
+`apps/api/test/expense-categories/expense-categories.e2e-spec.ts`.
+
+**5. Arquivos alterados:** `schema.prisma` (model `ExpenseCategory`, `Expense.category` VARCHAR(50)),
+`app.module.ts`, os 3 DTOs de `expenses` (category vira `@IsString()` em vez de `@IsIn()`),
+`seed-auth-fixtures.ts`/`seed-test-tenants.ts` (cleanup de `expenseCategory` antes de apagar o tenant),
+`apps/painel-barbearia/src/App.jsx` + `api/client.js`.
+
+**6. Testes:** criar categoria, rejeitar duplicata (409), isolamento entre tenants, RBAC admin-only,
+categoria customizada usada numa despesa de verdade — 5/5 passando. Suíte completa: 156/158 (mesma
+única falha pré-existente, `admin-plans.e2e-spec.ts`, colisão de ambiente — sem relação com este
+trabalho).
+
+**Verificação:** sem navegador disponível neste ambiente — validado via `fetch` direto (Node, não
+`curl`/Bash, que mostrou garbling de encoding só no terminal local, não nos dados reais — confirmado
+lendo o registro salvo no banco com acentuação correta via chamada HTTP real).
+
+**Fora deste sprint:** editar/renomear ou excluir categoria (só criar, por ora).
 
 ## 7. Testes
 

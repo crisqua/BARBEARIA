@@ -75,6 +75,7 @@ model Tenant {
   payouts              Payout[]
   activities           PlatformActivity[]
   expenses             Expense[]
+  expenseCategories    ExpenseCategory[]
 
   @@map("tenants")
 }
@@ -255,7 +256,7 @@ model Appointment {
 model Expense {
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @map("tenant_id") @db.Uuid
-  category      String   @db.VarChar(20) // insumos | fixas | outras
+  category      String   @db.VarChar(50) // texto livre (Sprint 28.3) — "insumos"/"fixas"/"outras" fixas + customizadas em ExpenseCategory
   description   String   @db.VarChar(255)
   amountCents   Int      @map("amount_cents")
   paymentMethod String   @map("payment_method") @db.VarChar(20) // pix | cartao | dinheiro | transferencia
@@ -268,4 +269,20 @@ model Expense {
 
   @@index([tenantId, expenseDate], map: "idx_expenses_tenant_date")
   @@map("expenses")
+}
+
+// Sprint 28.3 (admin-desenvolvain.md) — categorias de despesa cadastráveis por
+// tenant, além das 3 fixas no código (insumos/fixas/outras). Só guarda o nome
+// pro dropdown da tela; o valor salvo em Expense.category é texto livre, não
+// uma FK — cada barbearia pode ter suas próprias categorias.
+model ExpenseCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("expense_categories")
 }

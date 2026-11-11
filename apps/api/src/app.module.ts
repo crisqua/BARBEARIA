@@ -10,6 +10,7 @@ import { ServicesModule } from './services/services.module';
 import { ProfessionalsModule } from './professionals/professionals.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { ExpenseCategoriesModule } from './expense-categories/expense-categories.module';
 import { FinanceiroModule } from './financeiro/financeiro.module';
 import { HealthController } from './health/health.controller';
 
@@ -26,6 +27,7 @@ import { HealthController } from './health/health.controller';
     ProfessionalsModule,
     AppointmentsModule,
     ExpensesModule,
+    ExpenseCategoriesModule,
     FinanceiroModule,
   ],
   controllers: [HealthController],

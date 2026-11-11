@@ -35,7 +35,7 @@ Este arquivo deve ficar salvo como `CLAUDE.md` na raiz do repositório. O Claude
 
 **Pendente, registrado de propósito pra não esquecer (2026-10-18):** **conformidade com LGPD** vai virar uma sprint própria — ainda sem detalhamento, usuário vai especificar o escopo depois. Surgiu de uma dúvida sobre o payload de login aparecer em texto puro no DevTools (esclarecido: é TLS/HTTPS protegendo o dado em trânsito, comportamento normal, nenhum espião de rede consegue ler — não é uma falha do projeto). O que já existe hoje ajuda mas não foi feito pensando em LGPD especificamente (TLS em trânsito, senha com hash bcrypt em repouso, RLS isolando dado entre barbearias, regras 6.1 deste documento). O que falta é escopo real de LGPD, além de criptografia: base legal/consentimento, política de privacidade, direitos do titular (acesso/correção/exclusão dos próprios dados), contrato de tratamento de dados com os fornecedores (Supabase/Render/Vercel como operadores), política de retenção de dado, procedimento de notificação de vazamento.
 
-**Revisão (2026-11-11):** novo módulo **Financeiro** no painel da barbearia (Sprint 28, `admin-desenvolvain.md`) — expansão de escopo consciente, mesmo padrão da revisão 2026-08-18 sobre o billing da Incubadora. Nasceu de um protótipo visual aprovado (item de menu "Financeiro" abaixo de Serviços, nos moldes do projeto irmão PIZZARIA). Tabela nova `expenses` (seção 5.1, RLS + FK composta `created_by`), sem soft delete; receita não tem tabela própria, é agregação sobre `appointments` com `status = 'completed'` (não `scheduled`/projetado) + `services.price_cents`. Novos módulos `expenses` (CRUD admin-only) e `financeiro` (`GET /v1/financeiro/summary`). No frontend, substituiu por inteiro um componente `Financeiro` mockado que já existia desde o protótipo original (P&L completo com Deduções/Lucro Líquido — escopo bem mais amplo que o aprovado aqui), ligado a um `page === "financeiro"` que já existia no roteamento mas nunca era alcançável (sem item de menu). Achado técnico registrado em `admin-desenvolvain.md`: bug do Vite 5.4.21 no plugin `html-inline-proxy` com `<style>` inline em `index.html`, corrigido movendo esse CSS para um arquivo externo importado em `main.jsx`.
+**Revisão (2026-11-11):** novo módulo **Financeiro** no painel da barbearia (Sprint 28, `admin-desenvolvain.md`) — expansão de escopo consciente, mesmo padrão da revisão 2026-08-18 sobre o billing da Incubadora. Nasceu de um protótipo visual aprovado (item de menu "Financeiro" abaixo de Serviços, nos moldes do projeto irmão PIZZARIA). Tabela nova `expenses` (seção 5.1, RLS + FK composta `created_by`), sem soft delete; receita não tem tabela própria, é agregação sobre `appointments` com `status = 'completed'` (não `scheduled`/projetado) + `services.price_cents`. Novos módulos `expenses` (CRUD admin-only) e `financeiro` (`GET /v1/financeiro/summary`). No frontend, substituiu por inteiro um componente `Financeiro` mockado que já existia desde o protótipo original (P&L completo com Deduções/Lucro Líquido — escopo bem mais amplo que o aprovado aqui), ligado a um `page === "financeiro"` que já existia no roteamento mas nunca era alcançável (sem item de menu). Achado técnico registrado em `admin-desenvolvain.md`: bug do Vite 5.4.21 no plugin `html-inline-proxy` com `<style>` inline em `index.html`, corrigido movendo esse CSS para um arquivo externo importado em `main.jsx`. **Extensão (Sprint 28.3, mesmo dia):** categorias de despesa viraram cadastráveis por tenant — tabela nova `expense_categories` (seção 5.1), `expenses.category` deixou de ser uma lista fechada (`insumos`/`fixas`/`outras`) e virou texto livre (ainda com esses 3 valores fixos no frontend, mais o que cada barbearia cadastrar via "+ Nova categoria..." na própria tela, sem tela nova).
 
 ---
 
@@ -238,7 +238,7 @@ CREATE TABLE appointments (
 CREATE TABLE expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id),
-  category VARCHAR(20) NOT NULL, -- insumos | fixas | outras
+  category VARCHAR(50) NOT NULL, -- texto livre (Sprint 28.3) — "insumos"/"fixas"/"outras" fixas + customizadas em expense_categories
   description VARCHAR(255) NOT NULL,
   amount_cents INTEGER NOT NULL,
   payment_method VARCHAR(20) NOT NULL, -- pix | cartao | dinheiro | transferencia
@@ -247,6 +247,17 @@ CREATE TABLE expenses (
   created_at TIMESTAMPTZ DEFAULT now(),
   CONSTRAINT fk_expense_creator_tenant FOREIGN KEY (tenant_id, created_by)
     REFERENCES users (tenant_id, id)
+);
+
+-- Sprint 28.3 — categorias de despesa cadastráveis por tenant, além das 3
+-- fixas no código. Só alimenta o dropdown da tela; expenses.category é texto
+-- livre, não referencia esta tabela (não é FK).
+CREATE TABLE expense_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, name)
 );
 ```
 
@@ -319,6 +330,11 @@ CREATE POLICY tenant_isolation ON appointments
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON expenses
+  USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
+
+ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expense_categories FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON expense_categories
   USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
 ```
 

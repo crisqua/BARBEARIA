@@ -216,3 +216,8 @@ export const deleteExpense = (id) => apiFetch(`/v1/expenses/${id}`, { method: "D
 
 export const getFinanceiroSummary = (from, to) =>
   apiFetch(`/v1/financeiro/summary?from=${from}&to=${to}`);
+
+export const listExpenseCategories = () => apiFetch("/v1/expense-categories");
+
+export const createExpenseCategory = (name) =>
+  apiFetch("/v1/expense-categories", { method: "POST", body: { name } });
