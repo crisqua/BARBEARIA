@@ -170,7 +170,7 @@ const STATUS_LABEL = {
   cancelled: "cancelado",
   needs_reschedule: "precisa reagendar",
 };
-const STATUS_COLOR = { scheduled: T.success, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
+const STATUS_COLOR = { scheduled: T.gold, completed: T.success, cancelled: "#F25C5C", needs_reschedule: T.warning };
 
 // ─── LOGIN ─────────────────────────────────────────────────
 function LoginScreen({ onLogin, initialNotice }) {
