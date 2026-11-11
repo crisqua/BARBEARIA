@@ -1026,6 +1026,136 @@ depois que a tela passou a mostrar dias anteriores (achado 24/10/2026). **Decis�
 implementar nenhuma ação agora** (nem aviso visual, nem expurgo automático) — admin decide quando
 agir; se não agir, a ideia é "expurgar ao longo do tempo" no futuro, sem regra definida ainda.
 
+### ⏳ Sprint 28 — [Painel da Barbearia] Módulo Financeiro (Despesas + Receita) — planejado (11/11/2026), dividido em 2 etapas
+
+**Origem:** protótipo visual aprovado em link do Artifact (tela "Dashboard do Dono" + "Financeiro"),
+pedido explícito do usuário de um item novo "Financeiro" no menu do painel, abaixo de Serviços, nos
+moldes de uma tela equivalente do projeto irmão PIZZARIA — adaptada ao tema visual da Barberaria.
+
+**Observação de escopo:** o `CLAUDE.md` (seção 4) lista "dashboard financeiro avançado" como fora do
+MVP. Esse módulo não é "avançado" (sem conciliação bancária, sem gateway de pagamento, sem relatório
+contábil) — é um registro simples de despesas + um resumo de receita derivado de `appointments` que já
+existem. Mesmo assim é uma entidade de dados nova (`expenses`), tratada como expansão de escopo
+consciente (mesmo padrão já usado pro billing da Incubadora, revisão 2026-08-18 do `CLAUDE.md`).
+
+**Decisões já fechadas (11/11/2026):** receita conta só agendamento `status = 'completed'` (não
+`scheduled`/projetado); exclusão de despesa é hard delete, sem histórico; mantidos os 4 KPIs (Receita,
+Despesas, Saldo, Ticket Médio — "Formas de Pagamento" já saiu do design).
+
+**Por que dividir em 2 etapas:** o tamanho (tabela nova + RLS + dois módulos de API + tela nova) torna
+um commit único difícil de revisar e arriscado de testar de uma vez. Backend fica 100% validável
+sozinho via e2e, sem nenhuma UI — inclusive dá pra aplicar a migration em homolog e confirmar ausência
+de conflito antes de qualquer tela existir. Só depois o frontend consome uma API já provada.
+
+---
+
+#### ⏳ Sprint 28.1 — Backend + Banco (`expenses` + `financeiro/summary`)
+
+**1. Modelo de dados — tabela nova `expenses`:**
+```sql
+CREATE TABLE expenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  category VARCHAR(20) NOT NULL,        -- insumos | fixas | outras
+  description VARCHAR(255) NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  payment_method VARCHAR(20) NOT NULL,  -- pix | cartao | dinheiro | transferencia
+  expense_date DATE NOT NULL,
+  created_by UUID NOT NULL,             -- admin que lançou
+  created_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT fk_expense_creator_tenant FOREIGN KEY (tenant_id, created_by)
+    REFERENCES users (tenant_id, id)
+);
+
+CREATE INDEX idx_expenses_tenant_date ON expenses (tenant_id, expense_date);
+
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON expenses
+  USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
+```
+Sem soft delete — exclusão de despesa é hard delete, sem necessidade de histórico de auditoria no MVP.
+
+Receita não ganha tabela nova — agregação sobre `appointments` + `services` já existentes, só
+`status = 'completed'`:
+```sql
+SELECT SUM(s.price_cents)
+FROM appointments a JOIN services s ON s.id = a.service_id
+WHERE a.tenant_id = :tenantId AND a.status = 'completed'
+  AND a.starts_at BETWEEN :from AND :to
+```
+
+**2. Novo módulo `expenses` (NestJS):**
+
+| Rota | Papel | Descrição |
+|---|---|---|
+| `POST /v1/expenses` | admin | Cria despesa (`category`, `description`, `amountCents`, `paymentMethod`, `expenseDate`) |
+| `GET /v1/expenses?from=&to=&category=` | admin | Lista paginada, filtros opcionais |
+| `PATCH /v1/expenses/:id` | admin | Edita despesa do próprio tenant |
+| `DELETE /v1/expenses/:id` | admin | Remove (hard delete) |
+| `GET /v1/financeiro/summary?from=&to=` | admin | `{ receitaCents, despesasCents, saldoCents, ticketMedioCents, despesasPorCategoria: [{category, totalCents}] }` |
+
+Passa pelo `TenantContextInterceptor` existente (seção 6.3 do `CLAUDE.md`) e `@Roles('admin')` — mesma
+regra de `services`/`professionals` (barbeiro e cliente não acessam). `amountCents` segue o padrão de
+`services.price_cents` (inteiro, sem float).
+
+**3. Arquivos novos:**
+- `apps/api/prisma/migrations/0011_add_expenses/migration.sql`
+- `apps/api/src/expenses/expenses.module.ts`
+- `apps/api/src/expenses/expenses.controller.ts`
+- `apps/api/src/expenses/expenses.service.ts`
+- `apps/api/src/expenses/dto/create-expense.dto.ts`
+- `apps/api/src/expenses/dto/update-expense.dto.ts`
+- `apps/api/src/expenses/dto/list-expenses-query.dto.ts`
+- `apps/api/src/financeiro/financeiro.module.ts`
+- `apps/api/src/financeiro/financeiro.controller.ts`
+- `apps/api/src/financeiro/financeiro.service.ts`
+- `apps/api/src/financeiro/dto/summary-query.dto.ts`
+- `apps/api/test/expenses/expenses-crud.e2e-spec.ts`
+- `apps/api/test/financeiro/financeiro-summary.e2e-spec.ts`
+- `apps/api/test/isolation/composite-fk-expenses.spec.ts`
+
+**4. Arquivos alterados:**
+- `apps/api/prisma/schema.prisma` — novo `model Expense`, relação `createdBy` → `User`
+- `apps/api/src/app.module.ts` — registra `ExpensesModule` e `FinanceiroModule`
+
+**5. Testes obrigatórios (seção 7 do `CLAUDE.md`):** isolamento entre tenants em `expenses`; RBAC
+(barbeiro/cliente recebem `403` em todas as rotas); FK composta `created_by` rejeita admin de outro
+tenant; cálculo do `summary` com dados conhecidos (ex: 2 `completed` de R$50 e R$30, despesas de R$20 →
+saldo R$60, ticket médio R$40).
+
+**Critério de conclusão da etapa:** e2e completo passando local, migration aplicada e checada em
+homolog (mesmo pré-flight de conflito usado na Sprint 22) — **sem nenhuma mudança de frontend ainda**.
+
+**Status:** não iniciado.
+
+---
+
+#### ⏳ Sprint 28.2 — Frontend (`painel-barbearia`)
+
+Depende da 28.1 concluída e validada (consome a API já provada, não constrói contra um contrato
+hipotético).
+
+**1. Escopo:** item "Financeiro" no menu (abaixo de Serviços), tabs de período (7/30/90 dias) chamando
+`GET /financeiro/summary`, 4 KPIs (Receita, Despesas, Saldo, Ticket Médio), gráfico Receita x Despesas,
+lista de despesas com filtro por categoria, modal "+ Nova Despesa" (`POST /expenses`), ação de
+editar/excluir despesa na lista — reaproveitando a UI já validada no protótipo (link do Artifact).
+
+**2. Arquivos alterados** (sem arquivo novo — app inteiro é um único `src/App.jsx`, padrão já
+estabelecido no projeto, seção 3 do `CLAUDE.md`):
+- `apps/painel-barbearia/src/App.jsx` —
+  - novo item de menu "Financeiro" no array `sections` (logo após "Serviços");
+  - novo componente `Financeiro()` (replicando a estrutura de `Dashboard()`);
+  - novas funções de API (`listExpenses`, `createExpense`, `updateExpense`, `deleteExpense`,
+    `getFinanceiroSummary`) junto das demais chamadas já existentes no arquivo;
+  - roteamento: `if (page === "financeiro") return <Financeiro />;` no switch de páginas.
+
+**3. Fora deste sprint:** conciliação bancária/gateway de pagamento real; recorrência automática de
+despesa fixa; exportação real (botão "Exportar" do protótipo continua só visual); edição de despesa
+pelo barbeiro (fica admin-only).
+
+**Status:** não iniciado — aguardando 28.1.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de
