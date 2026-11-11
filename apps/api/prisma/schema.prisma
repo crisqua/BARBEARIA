@@ -74,6 +74,7 @@ model Tenant {
   payments             Payment[]
   payouts              Payout[]
   activities           PlatformActivity[]
+  expenses             Expense[]
 
   @@map("tenants")
 }
@@ -168,6 +169,7 @@ model User {
 
   appointmentsAsClient       Appointment[] @relation("AppointmentClient")
   appointmentsAsProfessional Appointment[] @relation("AppointmentProfessional")
+  expensesCreated            Expense[]     @relation("ExpenseCreator")
 
   @@unique([tenantId, email])
   @@unique([tenantId, id])
@@ -242,4 +244,28 @@ model Appointment {
   @@index([tenantId, professionalId, startsAt], map: "idx_appointments_professional")
   @@index([tenantId, clientId, startsAt], map: "idx_appointments_client")
   @@map("appointments")
+}
+
+// Sprint 28 (admin-desenvolvain.md) — despesas da barbearia, pra tela
+// Financeiro do painel (menu abaixo de Serviços). Sem soft delete de
+// propósito (decisão do usuário, 11/11/2026) — exclusão é hard delete.
+// Receita não tem tabela própria: vem de agregação sobre appointments
+// (status = 'completed') + services.price_cents, calculada em
+// FinanceiroService, não persistida aqui.
+model Expense {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  category      String   @db.VarChar(20) // insumos | fixas | outras
+  description   String   @db.VarChar(255)
+  amountCents   Int      @map("amount_cents")
+  paymentMethod String   @map("payment_method") @db.VarChar(20) // pix | cartao | dinheiro | transferencia
+  expenseDate   DateTime @map("expense_date") @db.Date
+  createdBy     String   @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant  Tenant @relation(fields: [tenantId], references: [id])
+  creator User   @relation("ExpenseCreator", fields: [createdBy], references: [id])
+
+  @@index([tenantId, expenseDate], map: "idx_expenses_tenant_date")
+  @@map("expenses")
 }

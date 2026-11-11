@@ -79,6 +79,7 @@ export async function cleanupTenant(
 ): Promise<void> {
   await tenantContext.runInTenantContext(tenantId, async (tx) => {
     await tx.appointment.deleteMany({ where: { tenantId } });
+    await tx.expense.deleteMany({ where: { tenantId } });
     await tx.workingHour.deleteMany({ where: { tenantId } });
     await tx.professionalService.deleteMany({ where: { tenantId } });
     await tx.service.deleteMany({ where: { tenantId } });

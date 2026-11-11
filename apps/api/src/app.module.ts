@@ -9,6 +9,8 @@ import { TenantsPublicModule } from './tenants-public/tenants-public.module';
 import { ServicesModule } from './services/services.module';
 import { ProfessionalsModule } from './professionals/professionals.module';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { FinanceiroModule } from './financeiro/financeiro.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -23,6 +25,8 @@ import { HealthController } from './health/health.controller';
     ServicesModule,
     ProfessionalsModule,
     AppointmentsModule,
+    ExpensesModule,
+    FinanceiroModule,
   ],
   controllers: [HealthController],
 })

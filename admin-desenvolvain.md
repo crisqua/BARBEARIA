@@ -1049,7 +1049,7 @@ de conflito antes de qualquer tela existir. Só depois o frontend consome uma AP
 
 ---
 
-#### ⏳ Sprint 28.1 — Backend + Banco (`expenses` + `financeiro/summary`)
+#### ✅ Sprint 28.1 — Backend + Banco (`expenses` + `financeiro/summary`) — concluído (11/11/2026)
 
 **1. Modelo de dados — tabela nova `expenses`:**
 ```sql
@@ -1127,7 +1127,17 @@ saldo R$60, ticket médio R$40).
 **Critério de conclusão da etapa:** e2e completo passando local, migration aplicada e checada em
 homolog (mesmo pré-flight de conflito usado na Sprint 22) — **sem nenhuma mudança de frontend ainda**.
 
-**Status:** não iniciado.
+**Implementado:** `expenses` é `CREATE TABLE` nova (não uma constraint sobre dado já existente, como
+na Sprint 22) — sem risco de conflito pré-existente, dispensa o pré-flight check feito lá. Migration
+`0011_add_expenses` aplicada localmente via `prisma migrate deploy`. Precisou ajustar os helpers de
+cleanup de teste (`seed-auth-fixtures.ts`, `seed-test-tenants.ts`) pra apagar `expenses` antes de
+`users`, por causa da FK composta `created_by`. Suíte e2e completa: 150/153 — as 3 falhas são as mesmas
+2 suítes pré-existentes já documentadas (`connection-pool-leak.e2e-spec.ts`, flakiness de ambiente;
+`admin-plans.e2e-spec.ts`, banco de dev local já tem planos cadastrados), nenhuma regressão nova.
+
+**Status:** concluído, aguardando deploy em homolog (vai junto no próximo push, mesmo mecanismo das
+sprints anteriores — `startCommand` roda `prisma:migrate:deploy` antes de subir). Sprint 28.2
+(frontend) ainda não iniciada.
 
 ---
 
