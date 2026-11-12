@@ -1259,6 +1259,73 @@ lendo o registro salvo no banco com acentuação correta via chamada HTTP real).
 
 **Fora deste sprint:** editar/renomear ou excluir categoria (só criar, por ora).
 
+### ✅ Sprint 29 — [Painel Master] Saúde Financeira da Barbearia — concluído (12/11/2026)
+
+**Origem:** na tela Financeiro do Painel Master (cobrança da assinatura da barbearia), usuário perguntou
+se dava pra acompanhar a saúde financeira real de cada barbearia (faturamento/despesas, não dia a dia —
+relatório semanal/mensal). Protótipo interativo aprovado (link do Artifact) antes de implementar, com
+uma correção de rumo no meio do caminho: trocar o toggle fixo Semanal/Mensal por um seletor de período
+livre (chips rápidos + calendário "Personalizado"), e confirmação explícita de que a tela é sempre de
+**uma barbearia por vez**, já selecionada via drill-down a partir da tela Financeiro — nunca uma visão
+agregada de todas.
+
+**Decisão técnica central (exigência explícita do usuário):** a agregação por período não pode buscar
+todos os dados do tenant e somar no Node — a query tem que aplicar o filtro de data e já devolver os
+totais prontos. Resolvido com SQL raw parametrizado (`Prisma.sql`/`Prisma.join`) agregando direto no
+banco, rodando dentro do `runInTenantContext` do tenant selecionado (RLS garante isolamento mesmo em
+SQL raw, já que é a mesma sessão/transação do `SET LOCAL`).
+
+**1. Sem tabela nova** — reaproveita `expenses` + `appointments` (`status = 'completed'`) + `services`
+já existentes (Sprint 28).
+
+**2. Backend — endpoint novo:**
+| Rota | Papel | Descrição |
+|---|---|---|
+| `GET /v1/admin/tenants/:tenantId/financial-health?from=&to=` | super_admin | `{ range, totals: {receitaCents, despesasCents, atendimentos}, previous: {range, receitaCents, despesasCents, atendimentos}, buckets: [{from, to, receitaCents, despesasCents, atendimentos}] }` |
+
+O período é dividido em até 7 baldes de tamanho igual (mesma regra que o gráfico do Financeiro da
+própria barbearia já usa no cliente — aqui decidida no backend). Duas queries agregam por balde com uma
+CTE `VALUES` + `LEFT JOIN` (uma pra receita, via `appointments JOIN services`; uma pra despesas, direto
+em `expenses`), e outras duas, sem baldes, pro período anterior de mesma duração (comparação "vs.
+período anterior" — funciona pra qualquer range, não só semana/mês fixo). `from`/`to` com range máximo
+de 366 dias (`class-validator` custom).
+
+**3. Arquivos novos:**
+- `apps/api/src/admin/dto/financial-health-query.dto.ts`
+- `apps/api/src/admin/admin-financial-health.service.ts`
+- `apps/api/src/admin/admin-financial-health.controller.ts`
+- `apps/api/test/admin/admin-financial-health.e2e-spec.ts`
+
+**4. Arquivos alterados:**
+- `apps/api/src/admin/admin.module.ts` — registra `AdminFinancialHealthController`/`Service`.
+- `apps/admin-desenvolvain/src/api/client.js` — `getTenantFinancialHealth(tenantId, from, to)`.
+- `apps/admin-desenvolvain/src/App.jsx` — botão "Ver saúde financeira →" na tela `Financeiro` (ao lado
+  de "Ver assinatura desta barbearia →"); novo componente `SaudeFinanceira` (chips de período, KPIs com
+  variação % vs. período anterior via `Stat`, gráfico de barras Faturamento x Despesas, tabela de
+  detalhamento por balde); novo estado `saudeFinanceiraTenantId` + rota `page === "saude-financeira"` —
+  **sem item próprio no array `sections` do Sidebar**, só acessível pelo botão, por pedido explícito.
+
+**Achado durante a implementação:** `bucket_index` volta do Postgres como `BigInt` em resultado de
+`$queryRaw` (ex: `1n`), não `number` — comparar com `===` contra o índice `number` do array em JS falhava
+silenciosamente (sempre `false`), fazendo todo balde cair em "0" mesmo com dado batendo. Descoberto
+isolando a query crua num script de depuração fora da suite (fora do e2e, que só mostrava o resultado
+final já errado). Corrigido com `::int` explícito no `SELECT` do SQL, em vez de deixar o tipo implícito
+do literal da `VALUES`.
+
+**5. Testes:** 403 pra admin de barbearia; 404 pra tenant inexistente; agregação correta por balde +
+totais + período anterior, com dado conhecido em datas específicas; isolamento (dado de outro tenant,
+mesmas datas, nunca aparece na soma); agrupamento em baldes de 2 dias quando o período passa de 7 dias
+(clamp em 7 baldes) — 4/4 passando. Suíte completa (`admin`+`isolation`+`financeiro`+`expenses`):
+mesmas 2 falhas pré-existentes já documentadas (`connection-pool-leak`, flakiness de concorrência local;
+`admin-plans`, banco de dev já tem os planos cadastrados), sem relação com este trabalho. `npm run build`
+limpo nos dois apps (`apps/api`, `apps/admin-desenvolvain`).
+
+**Verificação:** sem navegador disponível neste ambiente — validado via suíte e2e (dado conhecido,
+asserções exatas de valor por balde) e `vite build` limpo do frontend; não houve clique na interface
+real.
+
+**Fora deste sprint:** exportar o relatório (PDF/CSV); comparar várias barbearias lado a lado.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de

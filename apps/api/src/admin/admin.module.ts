@@ -5,6 +5,8 @@ import { AdminActivityController } from './admin-activity.controller';
 import { AdminActivityService } from './admin-activity.service';
 import { AdminDashboardController } from './admin-dashboard.controller';
 import { AdminDashboardService } from './admin-dashboard.service';
+import { AdminFinancialHealthController } from './admin-financial-health.controller';
+import { AdminFinancialHealthService } from './admin-financial-health.service';
 import { AdminPaymentsController } from './admin-payments.controller';
 import { AdminPaymentsService } from './admin-payments.service';
 import { AdminPayoutsController } from './admin-payouts.controller';
@@ -33,6 +35,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminPayoutsController,
     AdminSettingsController,
     AdminActivityController,
+    AdminFinancialHealthController,
   ],
   providers: [
     AdminTenantsService,
@@ -44,6 +47,7 @@ import { AdminUsersService } from './admin-users.service';
     AdminPayoutsService,
     AdminSettingsService,
     AdminActivityService,
+    AdminFinancialHealthService,
   ],
 })
 export class AdminModule {}

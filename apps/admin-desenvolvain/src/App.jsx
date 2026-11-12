@@ -8,6 +8,7 @@ import {
   getDashboardOverview,
   getSettings,
   getTenant,
+  getTenantFinancialHealth,
   getTenantPayments,
   getTenantStats,
   getTenantSubscription,
@@ -1377,7 +1378,7 @@ function getPaymentFormErrors(form) {
   return errors;
 }
 
-const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }) => {
+const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId, setSaudeFinanceiraTenantId }) => {
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1498,7 +1499,14 @@ const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }
         <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
       ) : (
         <div>
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              onClick={() => { setSaudeFinanceiraTenantId(tenantId); setActive("saude-financeira"); }}
+            >
+              Ver saúde financeira →
+            </Btn>
             <Btn
               variant="ghost"
               size="sm"
@@ -1609,6 +1617,222 @@ const Financeiro = ({ tenantId, setTenantId, setActive, setAssinaturasTenantId }
     </div>
   );
 };
+
+// ────────────────────────────────────────────────────────
+// TELA: SAÚDE FINANCEIRA (por barbearia — Sprint 29, admin-desenvolvain.md)
+// Só acessível via "Ver saúde financeira →" na tela Financeiro, com o
+// tenantId já selecionado — não existe um item próprio no menu lateral e
+// nunca agrega dados de mais de uma barbearia.
+// ────────────────────────────────────────────────────────
+const SAUDE_CHIPS = [
+  { id: "semana", label: "Esta semana" },
+  { id: "mes", label: "Este mês" },
+  { id: "mesPassado", label: "Mês passado" },
+  { id: "30d", label: "Últimos 30 dias" },
+  { id: "custom", label: "Personalizado" },
+];
+
+const dayKey = (d) => d.toISOString().slice(0, 10);
+const addDaysToKey = (key, days) => {
+  const d = new Date(`${key}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return dayKey(d);
+};
+const fmtShort = (key) => {
+  const d = new Date(`${key}T00:00:00.000Z`);
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
+};
+
+function computeSaudeRange(mode, customFrom, customTo) {
+  const today = dayKey(new Date());
+  if (mode === "semana") {
+    const dow = new Date(`${today}T00:00:00.000Z`).getUTCDay();
+    const mondayOffset = dow === 0 ? 6 : dow - 1;
+    return { from: addDaysToKey(today, -mondayOffset), to: today };
+  }
+  if (mode === "mes") {
+    return { from: `${today.slice(0, 7)}-01`, to: today };
+  }
+  if (mode === "mesPassado") {
+    const firstThisMonth = `${today.slice(0, 7)}-01`;
+    const lastPrevMonth = addDaysToKey(firstThisMonth, -1);
+    return { from: `${lastPrevMonth.slice(0, 7)}-01`, to: lastPrevMonth };
+  }
+  if (mode === "30d") {
+    return { from: addDaysToKey(today, -29), to: today };
+  }
+  // custom
+  let from = customFrom || addDaysToKey(today, -6);
+  let to = customTo || today;
+  if (from > to) { const t = from; from = to; to = t; }
+  if (to > today) to = today;
+  return { from, to };
+}
+
+function SaudeFinanceira({ tenantId }) {
+  const [mode, setMode] = useState("mes");
+  const [customFrom, setCustomFrom] = useState(addDaysToKey(dayKey(new Date()), -6));
+  const [customTo, setCustomTo] = useState(dayKey(new Date()));
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const { from, to } = computeSaudeRange(mode, customFrom, customTo);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    setLoading(true);
+    setError("");
+    getTenantFinancialHealth(tenantId, `${from}T00:00:00.000Z`, `${to}T23:59:59.999Z`)
+      .then(setData)
+      .catch((err) => setError(err.message || "Não foi possível carregar a saúde financeira dessa barbearia."))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, mode, customFrom, customTo]);
+
+  if (!tenantId) {
+    return (
+      <div style={{ padding: 32, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: T.bg }}>
+        <div style={{ background: T.card, border: `1px dashed ${T.border}`, borderRadius: 12, padding: 60, textAlign: "center", color: T.muted, fontSize: 13, maxWidth: 480 }}>
+          Acesse pela tela Financeiro, escolhendo "Ver saúde financeira →" de uma barbearia.
+        </div>
+      </div>
+    );
+  }
+
+  const pct = (cur, prev) => (prev === 0 ? null : Math.round(((cur - prev) / prev) * 100));
+  const fatDelta = data ? pct(data.totals.receitaCents, data.previous.receitaCents) : null;
+  const despDelta = data ? pct(data.totals.despesasCents, data.previous.despesasCents) : null;
+  const saldoCents = data ? data.totals.receitaCents - data.totals.despesasCents : 0;
+  const ticketMedio = data && data.totals.atendimentos > 0
+    ? formatMoney(Math.round(data.totals.receitaCents / data.totals.atendimentos))
+    : "—";
+  const maxBar = data ? Math.max(...data.buckets.map((b) => Math.max(b.receitaCents, b.despesasCents)), 1) : 1;
+  const todayKey = dayKey(new Date());
+
+  return (
+    <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
+      <div style={{ fontSize: 24, fontWeight: 900, color: T.text }}>Saúde Financeira</div>
+      <div style={{ fontSize: 13, color: T.muted, marginTop: 4, marginBottom: 20 }}>
+        Faturamento, despesas e atendimentos dessa barbearia, por período
+      </div>
+
+      <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: "16px 18px", marginBottom: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {SAUDE_CHIPS.map((c) => (
+            <div
+              key={c.id}
+              onClick={() => setMode(c.id)}
+              style={{
+                padding: "7px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                background: mode === c.id ? T.lime : "transparent", color: mode === c.id ? T.bg : T.mutedHi,
+              }}
+            >
+              {c.label}
+            </div>
+          ))}
+        </div>
+        {mode === "custom" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", paddingTop: 4, borderTop: `1px solid ${T.border}` }}>
+            <label style={{ fontSize: 12, color: T.mutedHi, display: "flex", alignItems: "center", gap: 8 }}>
+              De
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 7, padding: "7px 10px", fontSize: 13, color: T.text }} />
+            </label>
+            <label style={{ fontSize: 12, color: T.mutedHi, display: "flex", alignItems: "center", gap: 8 }}>
+              Até
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 7, padding: "7px 10px", fontSize: 13, color: T.text }} />
+            </label>
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: T.muted }}>Período: {fmtShort(from)} a {fmtShort(to)}</div>
+      </div>
+
+      {error && <div style={{ marginBottom: 16 }}><ErrorBox>{error}</ErrorBox></div>}
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: T.muted }}>Carregando…</div>
+      ) : data && (
+        <div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
+            <Stat
+              label="Faturamento" value={formatMoney(data.totals.receitaCents)} accent={T.lime}
+              sub={fatDelta === null ? undefined : `${Math.abs(fatDelta)}% vs. período anterior`}
+              trend={fatDelta === null ? undefined : fatDelta >= 0 ? "up" : "down"}
+            />
+            <Stat
+              label="Despesas" value={formatMoney(data.totals.despesasCents)} accent={T.danger}
+              sub={despDelta === null ? undefined : `${Math.abs(despDelta)}% vs. período anterior`}
+              trend={despDelta === null ? undefined : despDelta <= 0 ? "up" : "down"}
+            />
+            <Stat
+              label="Saldo" value={`${saldoCents >= 0 ? "+" : "−"}${formatMoney(Math.abs(saldoCents))}`}
+              accent={saldoCents >= 0 ? T.success : T.danger} sub="receita − despesas"
+            />
+            <Stat label="Atendimentos concluídos" value={String(data.totals.atendimentos)} accent={T.info} sub={`ticket médio ${ticketMedio}`} />
+          </div>
+
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Faturamento x Despesas</div>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: T.mutedHi }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: T.lime, display: "inline-block" }} />Faturamento</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: T.danger, display: "inline-block" }} />Despesas</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 16, height: 170, padding: "0 4px" }}>
+              {data.buckets.map((b, i) => {
+                const ongoing = b.to === todayKey;
+                return (
+                  <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, height: "100%", justifyContent: "flex-end" }}>
+                    <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 140 }}>
+                      <div style={{
+                        width: 16, height: Math.max(Math.round((b.receitaCents / maxBar) * 140), 2), background: T.lime,
+                        opacity: ongoing ? 0.45 : 1, borderRadius: "3px 3px 0 0", border: ongoing ? `1.5px dashed ${T.lime}88` : "none",
+                      }} />
+                      <div style={{
+                        width: 16, height: Math.max(Math.round((b.despesasCents / maxBar) * 140), 2), background: T.danger,
+                        opacity: ongoing ? 0.45 : 1, borderRadius: "3px 3px 0 0", border: ongoing ? `1.5px dashed ${T.danger}88` : "none",
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 10.5, color: ongoing ? T.muted : T.mutedHi, textAlign: "center", lineHeight: 1.3 }}>
+                      {b.from === b.to ? fmtShort(b.from) : `${fmtShort(b.from)}–${fmtShort(b.to)}`}
+                      {ongoing && <div>(em andamento)</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 10 }}>Detalhamento do período</div>
+            <Table
+              cols={["Período", "Atendimentos", "Faturamento", "Despesas", "Saldo"]}
+              rows={data.buckets.map((b, i) => {
+                const s = b.receitaCents - b.despesasCents;
+                const ongoing = b.to === todayKey;
+                return (
+                  <TRow key={i} last={i === data.buckets.length - 1} cells={[
+                    <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                      {b.from === b.to ? fmtShort(b.from) : `${fmtShort(b.from)}–${fmtShort(b.to)}`}
+                      {ongoing && <span style={{ fontSize: 10, color: T.warning, border: `1px solid ${T.warning}55`, borderRadius: 5, padding: "2px 6px", marginLeft: 8 }}>em andamento</span>}
+                    </span>,
+                    <span style={{ fontSize: 13, color: T.mutedHi }}>{b.atendimentos}</span>,
+                    <span style={{ fontSize: 13, color: T.lime, fontWeight: 600 }}>{formatMoney(b.receitaCents)}</span>,
+                    <span style={{ fontSize: 13, color: T.danger, fontWeight: 600 }}>{formatMoney(b.despesasCents)}</span>,
+                    <span style={{ fontSize: 13, fontWeight: 700, color: s >= 0 ? T.success : T.danger }}>{`${s >= 0 ? "+" : "−"}${formatMoney(Math.abs(s))}`}</span>,
+                  ]} />
+                );
+              })}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ────────────────────────────────────────────────────────
 // TELA: USUÁRIOS
@@ -2355,6 +2579,7 @@ export default function App() {
   // barbearia pensando em "ver o financeiro" não deveria pré-popular "ver a assinatura" sozinho.
   const [financeiroTenantId, setFinanceiroTenantId] = useState(null);
   const [assinaturasTenantId, setAssinaturasTenantId] = useState(null);
+  const [saudeFinanceiraTenantId, setSaudeFinanceiraTenantId] = useState(null);
   const [, setThemeTick] = useState(0); // força re-render depois de applyTheme mutar T
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2450,7 +2675,8 @@ export default function App() {
     if (page === "onboarding")  return <Onboarding setActive={setPage} />;
     if (page === "planos")      return <Planos />;
     if (page === "assinaturas") return <Assinaturas tenantId={assinaturasTenantId} setTenantId={setAssinaturasTenantId} />;
-    if (page === "financeiro")  return <Financeiro tenantId={financeiroTenantId} setTenantId={setFinanceiroTenantId} setActive={setPage} setAssinaturasTenantId={setAssinaturasTenantId} />;
+    if (page === "financeiro")  return <Financeiro tenantId={financeiroTenantId} setTenantId={setFinanceiroTenantId} setActive={setPage} setAssinaturasTenantId={setAssinaturasTenantId} setSaudeFinanceiraTenantId={setSaudeFinanceiraTenantId} />;
+    if (page === "saude-financeira") return <SaudeFinanceira tenantId={saudeFinanceiraTenantId} />;
     if (page === "repasses")    return <Repasses />;
     if (page === "usuarios")    return <Usuarios setActive={setPage} setFinanceiroTenantId={setFinanceiroTenantId} setAssinaturasTenantId={setAssinaturasTenantId} />;
     if (page === "suporte")     return <Suporte />;

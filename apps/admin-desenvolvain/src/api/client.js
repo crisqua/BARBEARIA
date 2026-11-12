@@ -108,6 +108,12 @@ export const updateTenant = (id, data) =>
 
 export const getTenantStats = (id) => apiFetch(`/v1/admin/tenants/${id}/stats`);
 
+// ─── Saúde financeira (por barbearia — Sprint 29, admin-desenvolvain.md) ─
+export const getTenantFinancialHealth = (tenantId, from, to) => {
+  const query = new URLSearchParams({ from, to }).toString();
+  return apiFetch(`/v1/admin/tenants/${tenantId}/financial-health?${query}`);
+};
+
 // ─── Dashboard ───────────────────────────────────────────
 export const getDashboardOverview = () => apiFetch("/v1/admin/dashboard/overview");
 
