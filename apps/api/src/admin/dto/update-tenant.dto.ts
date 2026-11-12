@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUrl, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 /** Usado só pela rota de Super Admin — inclui `status` (só ele pode suspender/ativar). */
 export class UpdateTenantDto {
@@ -24,4 +24,10 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsIn(['active', 'suspended'])
   status?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  paymentDueDay?: number;
 }

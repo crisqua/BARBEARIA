@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
 import { CacheService } from '../cache/cache.service';
 import { mapWithConcurrency } from '../common/batch-map.util';
+import { AdminPaymentStatusService } from './admin-payment-status.service';
 import { logActivity } from './activity-log.util';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 
@@ -22,6 +23,7 @@ export class AdminSubscriptionsService {
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
     private readonly cache: CacheService,
+    private readonly paymentStatusService: AdminPaymentStatusService,
   ) {}
 
   /**
@@ -166,6 +168,7 @@ export class AdminSubscriptionsService {
     });
 
     await this.cache.del(SUBSCRIPTIONS_CACHE_KEY);
+    await this.paymentStatusService.invalidateCache();
     return result;
   }
 }

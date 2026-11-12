@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminPaymentStatusService } from './admin-payment-status.service';
 import { AdminSubscriptionsService } from './admin-subscriptions.service';
 
 @Injectable()
@@ -7,6 +8,7 @@ export class AdminDashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly adminSubscriptionsService: AdminSubscriptionsService,
+    private readonly adminPaymentStatusService: AdminPaymentStatusService,
   ) {}
 
   /**
@@ -27,18 +29,21 @@ export class AdminDashboardService {
    * Assinaturas — nenhuma leitura nova ao banco só por causa do Dashboard.
    */
   async overview() {
-    const [totalTenants, activeTenants, suspendedTenants, subscriptionsOverview] = await Promise.all([
-      this.prisma.tenant.count(),
-      this.prisma.tenant.count({ where: { status: 'active' } }),
-      this.prisma.tenant.count({ where: { status: 'suspended' } }),
-      this.adminSubscriptionsService.getOverview(),
-    ]);
+    const [totalTenants, activeTenants, suspendedTenants, subscriptionsOverview, paymentStatusCounts] =
+      await Promise.all([
+        this.prisma.tenant.count(),
+        this.prisma.tenant.count({ where: { status: 'active' } }),
+        this.prisma.tenant.count({ where: { status: 'suspended' } }),
+        this.adminSubscriptionsService.getOverview(),
+        this.adminPaymentStatusService.getOverview(),
+      ]);
 
     return {
       tenants: { total: totalTenants, active: activeTenants, suspended: suspendedTenants },
       mrrCents: subscriptionsOverview.mrrCents,
       trialsAtivos: subscriptionsOverview.trialsAtivos,
       tenantsByPlan: subscriptionsOverview.tenantsByPlan,
+      paymentStatusCounts,
     };
   }
 }

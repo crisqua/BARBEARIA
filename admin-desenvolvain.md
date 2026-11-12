@@ -1326,6 +1326,73 @@ real.
 
 **Fora deste sprint:** exportar o relatório (PDF/CSV); comparar várias barbearias lado a lado.
 
+### ✅ Sprint 30 — [Painel Master] Dia de Pagamento e Status de Cobrança — concluído (12/11/2026)
+
+**Origem:** dúvida do usuário — "onde eu vejo as barbearias em atraso no pagamento e pagas?" — não existia
+nenhuma tela com isso; `payments` só tinha `pending`/`paid` por período (`AAAA-MM`), sem data de vencimento,
+então não dava nem pra calcular "atraso" sem um dia de referência. Protótipo (Design canvas) validado antes
+de implementar, em duas rodadas — primeira ideia (dia padrão por plano) descartada pelo usuário, segunda
+(campo numérico 01–30 na Nova Barbearia, junto do Plano Inicial) aprovada.
+
+**Campo novo:** `Tenant.paymentDueDay` (`payment_due_day`, `INT NOT NULL DEFAULT 10`, migration `0013`).
+`tenants` não tem RLS (exceção documentada, seção 6.4) — nenhuma policy nova aqui é o esperado. DTO de
+criação/edição valida `1 ≤ dia ≤ 30` mas o campo é **opcional na API** (o banco já tem default) — deixar
+obrigatório quebraria o `scripts/benchmark/bench.mjs` e os testes de provisionamento existentes, que não
+mandam esse campo; o onboarding real (`Onboarding`, `admin-desenvolvain`) é que exige no front.
+
+**Regra de "em atraso" (`computePaymentStatus`, função pura em `admin-payment-status.service.ts`,
+confirmada com o usuário em 3 rodadas de ajuste):**
+1. *Primeiro ciclo*: o primeiro vencimento possível é o dia de pagamento no mês em que a barbearia nasceu,
+   OU no mês seguinte se ela nasceu depois desse dia naquele mês (ex: nasce dia 25, vencimento dia 10 → só
+   cobra a partir do dia 10 do mês seguinte — nunca marca atraso antes disso, senão toda barbearia nova
+   nasceria "em atraso" por acaso do calendário).
+2. A partir do primeiro ciclo, cada mês compara o dia de hoje (`nowInBarbershopTime()`) com o dia de
+   vencimento daquele mês — ajustado pro último dia do mês em fevereiro/meses curtos (vencimento 30 em
+   fevereiro vira dia 28/29, mesma prática de fatura de cartão) — contra um `Payment` pago com
+   `period` = mês corrente. Sem memória de meses anteriores (decisão consciente, só o período atual
+   importa).
+3. Barbearia sem assinatura ativa ou no plano `trial` → `sem_cobranca` (nunca `em_atraso`), mesmo
+   raciocínio já usado no MRR (revisão 2026-11-12 anterior).
+
+**Decisão técnica (reaproveita um incidente já resolvido):** o cálculo cross-tenant usa o MESMO padrão de
+`AdminSubscriptionsService` — `mapWithConcurrency(tenants, 5, ...)` + cache de 90s
+(`admin-payment-status.service.ts`) — pra não repetir o incidente `P2028` já documentado
+(`common/batch-map.util.ts`, 56 tenants em homolog). Dashboard e lista de Barbearias leem o MESMO cache
+(`getOverview()` / `getStatusByTenantIds()`), nenhuma tela tem seu próprio loop cross-tenant. Cache
+invalidado em: criar/editar tenant (`paymentDueDay` mudou), registrar/editar pagamento (`status` mudou),
+trocar plano/status de assinatura.
+
+**Rotas e arquivos:**
+
+| Mudança | Arquivo |
+|---|---|
+| Campo no schema + migration | `prisma/schema.prisma`, `prisma/migrations/0013_add_tenant_payment_due_day` |
+| Validação 1–30 (opcional) | `admin/dto/create-tenant.dto.ts`, `admin/dto/update-tenant.dto.ts` |
+| Serviço cross-tenant (novo) | `admin/admin-payment-status.service.ts` |
+| `paymentStatus` em `GET /v1/admin/tenants` e `GET /v1/admin/tenants/:id` | `admin/admin-tenants.service.ts` |
+| `paymentStatusCounts` em `GET /v1/admin/dashboard/overview` | `admin/admin-dashboard.service.ts` |
+| Invalidação de cache | `admin/admin-tenants.service.ts`, `admin/admin-payments.service.ts`, `admin/admin-subscriptions.service.ts` |
+| Registro no módulo | `admin/admin.module.ts` |
+| Campo "Dia de pagamento" no onboarding | `App.jsx` (`Onboarding`, `getStep1Errors`) |
+| Coluna "Pagamento" na lista + edição no detalhe | `App.jsx` (`Barbearias`) |
+| Stat "Em atraso" | `App.jsx` (`Dashboard`) |
+| Chamada da API (sem rota nova) | `api/client.js` (campos já vêm nos payloads existentes) |
+
+**Testes:** `payment-status-calendar.e2e-spec.ts` (8 testes, função pura — primeiro ciclo nos dois exemplos
+do usuário, ajuste de fevereiro, pagamento cobre atraso) + `admin-payment-status.e2e-spec.ts` (4 testes —
+status correto por tenant sem vazamento cross-tenant, contagem no dashboard, invalidação de cache ao marcar
+pagamento) + 1 teste novo de validação (`0`/`31` rejeitados, `1`/`30` aceitos, default `10` sem o campo) em
+`admin-tenants-provisioning.e2e-spec.ts`. Suíte completa de `test/admin`+`test/tenants`: só a falha
+pré-existente já documentada (`admin-plans`, banco de dev já tem os planos cadastrados), sem relação com
+este trabalho. `npm run build` limpo nos dois apps.
+
+**Verificação:** sem navegador disponível neste ambiente — validado via e2e (dado conhecido, calendário
+cobrindo os casos de borda confirmados com o usuário) e `vite build` limpo do frontend; não houve clique na
+interface real.
+
+**Fora deste sprint:** notificação automática (e-mail/WhatsApp) pra barbearia em atraso; suspensão automática
+por atraso; histórico de atrasos de meses anteriores.
+
 ## 7. Testes
 
 Todo endpoint novo tem e2e cobrindo RBAC (403 pra não-super_admin) + a lógica específica (cálculo de

@@ -1,5 +1,17 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import {
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 
 class InitialAdminDto {
   @IsString()
@@ -46,4 +58,11 @@ export class CreateTenantDto {
 
   @IsUUID()
   planId!: string;
+
+  /** Opcional — sem ele, o banco usa o default (10). Onboarding real sempre manda. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  paymentDueDay?: number;
 }

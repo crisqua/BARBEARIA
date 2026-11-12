@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
+import { AdminPaymentStatusService } from './admin-payment-status.service';
 import { formatCentsBRL, logActivity } from './activity-log.util';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
@@ -11,6 +12,7 @@ export class AdminPaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantContext: TenantContextService,
+    private readonly paymentStatusService: AdminPaymentStatusService,
   ) {}
 
   private async assertTenantExists(tenantId: string) {
@@ -36,6 +38,9 @@ export class AdminPaymentsService {
       const valor = formatCentsBRL(payment.amountCents);
       await logActivity(tx, tenantId, action, `Pagamento de R$ ${valor} (${payment.period}) registrado para "${tenant.name}".`);
       return payment;
+    }).then(async (payment) => {
+      if (payment.status === 'paid') await this.paymentStatusService.invalidateCache();
+      return payment;
     });
   }
 
@@ -58,6 +63,9 @@ export class AdminPaymentsService {
         await logActivity(tx, tenantId, 'payment_paid', `Pagamento de R$ ${valor} (${updated.period}) confirmado para "${tenant.name}".`);
       }
 
+      return updated;
+    }).then(async (updated) => {
+      if (dto.status) await this.paymentStatusService.invalidateCache();
       return updated;
     });
   }

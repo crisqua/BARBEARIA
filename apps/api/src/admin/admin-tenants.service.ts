@@ -6,6 +6,7 @@ import { CacheService } from '../cache/cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantContextService } from '../prisma/tenant-context.service';
 import { tenantBrandingCacheKey } from '../tenants-public/tenant-branding-cache-key';
+import { AdminPaymentStatusService } from './admin-payment-status.service';
 import { SUBSCRIPTIONS_CACHE_KEY } from './admin-subscriptions.service';
 import { logActivity } from './activity-log.util';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -17,6 +18,7 @@ export class AdminTenantsService {
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     private readonly tenantContext: TenantContextService,
+    private readonly paymentStatusService: AdminPaymentStatusService,
   ) {}
 
   /**
@@ -45,6 +47,7 @@ export class AdminTenantsService {
             name: dto.name,
             primaryColor: dto.primaryColor,
             secondaryColor: dto.secondaryColor,
+            paymentDueDay: dto.paymentDueDay,
           },
         });
 
@@ -69,6 +72,7 @@ export class AdminTenantsService {
         return { tenant, admin: { id: admin.id, email: admin.email }, subscription };
       });
       await this.cache.del(SUBSCRIPTIONS_CACHE_KEY);
+      await this.paymentStatusService.invalidateCache();
       return result;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -97,13 +101,19 @@ export class AdminTenantsService {
       this.prisma.tenant.count({ where }),
     ]);
 
-    return { items, total, page, pageSize };
+    // Status de cobrança vem do cache cross-tenant de 90s (admin-payment-status.service.ts)
+    // — nunca um loop novo por página, só uma consulta ao mapa já calculado.
+    const statusById = await this.paymentStatusService.getStatusByTenantIds(items.map((t) => t.id));
+    const itemsWithStatus = items.map((t) => ({ ...t, paymentStatus: statusById.get(t.id) ?? 'sem_cobranca' }));
+
+    return { items: itemsWithStatus, total, page, pageSize };
   }
 
   async findOne(id: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new NotFoundException();
-    return tenant;
+    const statusById = await this.paymentStatusService.getStatusByTenantIds([id]);
+    return { ...tenant, paymentStatus: statusById.get(id) ?? 'sem_cobranca' };
   }
 
   async update(id: string, dto: UpdateTenantDto) {
@@ -112,6 +122,9 @@ export class AdminTenantsService {
 
     const updated = await this.prisma.tenant.update({ where: { id }, data: dto });
     await this.cache.del(tenantBrandingCacheKey(updated.slug));
+    if (dto.paymentDueDay !== undefined && dto.paymentDueDay !== existing.paymentDueDay) {
+      await this.paymentStatusService.invalidateCache();
+    }
 
     if (dto.status && dto.status !== existing.status) {
       const action = dto.status === 'suspended' ? 'tenant_suspended' : 'tenant_reactivated';

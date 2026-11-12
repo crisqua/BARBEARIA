@@ -146,14 +146,14 @@ const ErrorBox = ({ children }) => (
   </div>
 );
 
-const Input = ({ label, value, onChange, placeholder, type = "text", error }) => (
+const Input = ({ label, value, onChange, placeholder, type = "text", error, min, max }) => (
   <div>
     {label && (
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         {label}{error && <span style={{ color: T.danger }}> *</span>}
       </div>
     )}
-    <input value={value} onChange={onChange} placeholder={placeholder} type={type}
+    <input value={value} onChange={onChange} placeholder={placeholder} type={type} min={min} max={max}
       style={{ width: "100%", background: T.surface, border: `1px solid ${error ? T.danger : T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
     {error && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{error}</div>}
   </div>
@@ -546,6 +546,12 @@ const Dashboard = ({ setActive }) => {
           sub={overview ? `${overview.tenants.active} ativas · ${overview.tenants.suspended} suspensas` : undefined}
         />
         <Stat label="Receita recorrente mensal" value={overview ? formatMoney(overview.mrrCents) : "…"} />
+        <Stat
+          label="Em atraso"
+          value={overview ? String(overview.paymentStatusCounts.emAtraso) : "…"}
+          accent={overview && overview.paymentStatusCounts.emAtraso > 0 ? T.danger : T.success}
+          sub={overview ? `${overview.paymentStatusCounts.emDia} em dia · ${overview.paymentStatusCounts.semCobranca} sem cobrança` : undefined}
+        />
       </div>
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
@@ -646,6 +652,13 @@ const statusBadge = (status) => ({
 
 const BARBEARIAS_PAGE_SIZE = 10;
 
+const PAYMENT_STATUS_LABEL = {
+  em_dia: { color: T.success, label: "em dia" },
+  em_atraso: { color: T.danger, label: "em atraso" },
+  sem_cobranca: { color: T.muted, label: "sem cobrança" },
+};
+const paymentStatusBadge = (status) => PAYMENT_STATUS_LABEL[status] || PAYMENT_STATUS_LABEL.sem_cobranca;
+
 const Barbearias = () => {
   const [tenants, setTenants] = useState([]);
   const [total, setTotal] = useState(0);
@@ -656,6 +669,9 @@ const Barbearias = () => {
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
   const [acting, setActing] = useState(false);
+  const [editandoDia, setEditandoDia] = useState(false);
+  const [diaInput, setDiaInput] = useState("");
+  const [diaErro, setDiaErro] = useState("");
 
   const load = () => {
     setLoading(true);
@@ -683,6 +699,8 @@ const Barbearias = () => {
     // de detalhe continua mostrando os dados da anterior até a resposta chegar
     // (mesma classe de bug corrigida no app cliente em 17-18/10/2026).
     setDetalhe(null);
+    setEditandoDia(false);
+    setDiaErro("");
     if (!selecionada) return;
     getTenant(selecionada).then(setDetalhe);
   }, [selecionada]);
@@ -700,6 +718,31 @@ const Barbearias = () => {
     }
   };
 
+  const iniciarEdicaoDia = () => {
+    setDiaInput(String(detalhe.paymentDueDay));
+    setDiaErro("");
+    setEditandoDia(true);
+  };
+
+  const salvarDiaPagamento = async () => {
+    const dia = Number(diaInput);
+    if (!Number.isInteger(dia) || dia < 1 || dia > 30) {
+      setDiaErro("Dia entre 01 e 30.");
+      return;
+    }
+    setActing(true);
+    try {
+      const atualizado = await updateTenant(detalhe.id, { paymentDueDay: dia });
+      setDetalhe(atualizado);
+      setEditandoDia(false);
+      await load();
+    } catch (e) {
+      setDiaErro(e.message || "Não foi possível salvar.");
+    } finally {
+      setActing(false);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / BARBEARIAS_PAGE_SIZE));
 
   if (selecionada) {
@@ -707,6 +750,7 @@ const Barbearias = () => {
       return <div style={{ padding: 32, color: T.muted, fontSize: 12 }}>Carregando…</div>;
     }
     const badge = statusBadge(detalhe.status);
+    const pagamentoBadge = paymentStatusBadge(detalhe.paymentStatus);
     return (
       <div style={{ padding: 32, overflowY: "auto", flex: 1, background: T.bg }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
@@ -715,7 +759,7 @@ const Barbearias = () => {
           <div style={{ fontSize: 13, color: T.text, fontWeight: 600 }}>{detalhe.name}</div>
         </div>
         <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
-          <Stat label="MRR" value="—" sub="chega no Sprint 6" />
+          <Stat label="Pagamento" value={pagamentoBadge.label} accent={pagamentoBadge.color} sub={`dia ${detalhe.paymentDueDay}`} />
           <Stat label="Agendamentos" value="—" sub="chega no Sprint 2" />
           <Stat label="Barbeiros" value="—" sub="chega no Sprint 2" />
           <Stat label="Status" value={badge.label} accent={badge.color} />
@@ -735,6 +779,22 @@ const Barbearias = () => {
                 <span style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{v}</span>
               </div>
             ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0" }}>
+              <span style={{ fontSize: 12, color: T.muted }}>Dia de pagamento</span>
+              {editandoDia ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={1} max={30} value={diaInput} onChange={(e) => setDiaInput(e.target.value)}
+                    style={{ width: 60, background: T.surface, border: `1px solid ${diaErro ? T.danger : T.border}`, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 12, outline: "none" }} />
+                  <span onClick={acting ? undefined : salvarDiaPagamento} style={{ fontSize: 11, color: T.lime, cursor: acting ? "default" : "pointer", fontWeight: 600 }}>Salvar</span>
+                  <span onClick={() => setEditandoDia(false)} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Cancelar</span>
+                </div>
+              ) : (
+                <span onClick={iniciarEdicaoDia} style={{ fontSize: 12, color: T.text, fontWeight: 600, cursor: "pointer" }}>
+                  dia {detalhe.paymentDueDay} <span style={{ color: T.lime, fontSize: 11 }}>editar</span>
+                </span>
+              )}
+            </div>
+            {diaErro && <div style={{ fontSize: 11, color: T.danger, textAlign: "right" }}>{diaErro}</div>}
           </div>
           <div style={{ flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 10 }}>
             <div title="Chega no Sprint 7" style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", opacity: 0.45, cursor: "not-allowed" }}>
@@ -775,9 +835,10 @@ const Barbearias = () => {
       ) : (
         <>
           <Table
-            cols={["Barbearia", "Identificador", "Criada em", "Status", ""]}
+            cols={["Barbearia", "Identificador", "Criada em", "Status", "Pagamento", ""]}
             rows={tenants.map((t, i) => {
               const badge = statusBadge(t.status);
+              const pagamento = paymentStatusBadge(t.paymentStatus);
               return (
                 <TRow key={t.id} last={i === tenants.length - 1} cells={[
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -790,12 +851,17 @@ const Barbearias = () => {
                   <span style={{ fontSize: 13, color: T.muted }}>{t.slug}</span>,
                   <span style={{ fontSize: 13, color: T.muted }}>{formatDate(t.createdAt)}</span>,
                   <Badge color={badge.color}>{badge.label}</Badge>,
+                  <div>
+                    <Badge color={pagamento.color}>{pagamento.label}</Badge>
+                    <div style={{ fontSize: 10, color: T.muted, marginTop: 3 }}>dia {t.paymentDueDay}</div>
+                  </div>,
                   <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>,
                 ]} />
               );
             })}
             mobileRows={tenants.map((t) => {
               const badge = statusBadge(t.status);
+              const pagamento = paymentStatusBadge(t.paymentStatus);
               return (
                 <MobileCard key={t.id}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -808,7 +874,10 @@ const Barbearias = () => {
                     </div>
                     <Badge color={badge.color}>{badge.label}</Badge>
                   </div>
-                  <div style={{ fontSize: 12, color: T.muted }}>Criada em {formatDate(t.createdAt)}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 12, color: T.muted }}>Criada em {formatDate(t.createdAt)}</div>
+                    <Badge color={pagamento.color}>{pagamento.label}</Badge>
+                  </div>
                   <span onClick={() => setSelecionada(t.id)} style={{ fontSize: 12, color: T.lime, cursor: "pointer", fontWeight: 600 }}>Ver detalhes</span>
                 </MobileCard>
               );
@@ -851,6 +920,11 @@ function getStep1Errors(form, planosDisponiveis) {
   if (!form.adminSenha) errors.adminSenha = "Obrigatório.";
   else if (form.adminSenha.length < 8) errors.adminSenha = "Mínimo 8 caracteres.";
   if (planosDisponiveis && !form.planId) errors.planId = "Escolha um plano.";
+  if (!form.diaPagamento.trim()) errors.diaPagamento = "Obrigatório.";
+  else {
+    const dia = Number(form.diaPagamento);
+    if (!Number.isInteger(dia) || dia < 1 || dia > 30) errors.diaPagamento = "Dia entre 01 e 30.";
+  }
   return errors;
 }
 
@@ -863,7 +937,7 @@ function getStep2Errors(form) {
 
 const Onboarding = ({ setActive }) => {
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ nome: "", slug: "", planId: "", cor1: "#C9A84C", cor2: "#0F0F0F", contato: "", adminNome: "", adminSenha: "" });
+  const [form, setForm] = useState({ nome: "", slug: "", planId: "", cor1: "#C9A84C", cor2: "#0F0F0F", contato: "", adminNome: "", adminSenha: "", diaPagamento: "10" });
   const [planos, setPlanos] = useState([]);
   const [loadingPlanos, setLoadingPlanos] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -946,6 +1020,7 @@ const Onboarding = ({ setActive }) => {
         secondaryColor: form.cor2 || undefined,
         admin: { name: form.adminNome, email: form.contato, password: form.adminSenha },
         planId: form.planId,
+        paymentDueDay: Number(form.diaPagamento),
       });
       setActive("barbearias");
     } catch (e) {
@@ -1015,6 +1090,12 @@ const Onboarding = ({ setActive }) => {
                 options={planos.map((p) => ({ value: p.id, label: `${p.name} — ${p.priceCents != null ? `R$ ${(p.priceCents / 100).toFixed(2).replace(".", ",")}/mês` : "negociado"}` }))}
                 error={attempted[1] ? stepErrors[1].planId : undefined} />
             )}
+            <div>
+              <Input label="Dia de pagamento" type="number" min={1} max={30} value={form.diaPagamento}
+                onChange={e => setForm(f => ({ ...f, diaPagamento: e.target.value }))} placeholder="Ex: 10"
+                error={attempted[1] ? stepErrors[1].diaPagamento : undefined} />
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>Dia do mês (01 a 30) em que essa barbearia vence a mensalidade — usado pra marcar "em atraso" em Barbearias.</div>
+            </div>
           </div>
         )}
 

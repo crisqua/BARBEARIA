@@ -169,6 +169,42 @@ describe('Provisionamento de tenants (/v1/admin/tenants)', () => {
     expect(semResultado.body.items).toHaveLength(0);
   });
 
+  it('valida paymentDueDay entre 1 e 30 (Sprint 30)', async () => {
+    const base = {
+      name: 'Barbearia Dia Pagamento',
+      admin: { name: 'Admin', email: `a-${Date.now()}@test.local`, password: 'senha-forte-123' },
+      planId,
+    };
+
+    const zero = await request(app.getHttpServer())
+      .post('/v1/admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ ...base, slug: uniqueSlug('dia-0'), paymentDueDay: 0 });
+    expect(zero.status).toBe(400);
+
+    const trintaEUm = await request(app.getHttpServer())
+      .post('/v1/admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ ...base, slug: uniqueSlug('dia-31'), paymentDueDay: 31 });
+    expect(trintaEUm.status).toBe(400);
+
+    const semCampo = await request(app.getHttpServer())
+      .post('/v1/admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ ...base, slug: uniqueSlug('dia-default'), admin: { ...base.admin, email: `b-${Date.now()}@test.local` } });
+    expect(semCampo.status).toBe(201);
+    expect(semCampo.body.tenant.paymentDueDay).toBe(10); // default do banco
+    createdTenantIds.push(semCampo.body.tenant.id);
+
+    const trinta = await request(app.getHttpServer())
+      .post('/v1/admin/tenants')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ ...base, slug: uniqueSlug('dia-30'), admin: { ...base.admin, email: `c-${Date.now()}@test.local` }, paymentDueDay: 30 });
+    expect(trinta.status).toBe(201);
+    expect(trinta.body.tenant.paymentDueDay).toBe(30);
+    createdTenantIds.push(trinta.body.tenant.id);
+  });
+
   it('suspende um tenant e o login do admin dele para de funcionar', async () => {
     const slug = uniqueSlug('suspend');
     const created = await request(app.getHttpServer())
