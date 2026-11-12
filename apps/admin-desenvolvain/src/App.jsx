@@ -146,14 +146,14 @@ const ErrorBox = ({ children }) => (
   </div>
 );
 
-const Input = ({ label, value, onChange, placeholder, type = "text", error, min, max }) => (
+const Input = ({ label, value, onChange, placeholder, type = "text", error, min, max, inputMode }) => (
   <div>
     {label && (
       <div style={{ fontSize: 11, color: T.muted, marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         {label}{error && <span style={{ color: T.danger }}> *</span>}
       </div>
     )}
-    <input value={value} onChange={onChange} placeholder={placeholder} type={type} min={min} max={max}
+    <input value={value} onChange={onChange} placeholder={placeholder} type={type} min={min} max={max} inputMode={inputMode}
       style={{ width: "100%", background: T.surface, border: `1px solid ${error ? T.danger : T.border}`, borderRadius: 8, padding: "10px 14px", color: T.text, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }} />
     {error && <div style={{ fontSize: 11, color: T.danger, marginTop: 5 }}>{error}</div>}
   </div>
@@ -783,7 +783,7 @@ const Barbearias = () => {
               <span style={{ fontSize: 12, color: T.muted }}>Dia de pagamento</span>
               {editandoDia ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={1} max={30} value={diaInput} onChange={(e) => setDiaInput(e.target.value)}
+                  <input type="text" inputMode="numeric" value={diaInput} onChange={(e) => setDiaInput(e.target.value.replace(/\D/g, "").slice(0, 2))}
                     style={{ width: 60, background: T.surface, border: `1px solid ${diaErro ? T.danger : T.border}`, borderRadius: 6, padding: "5px 8px", color: T.text, fontSize: 12, outline: "none" }} />
                   <span onClick={acting ? undefined : salvarDiaPagamento} style={{ fontSize: 11, color: T.lime, cursor: acting ? "default" : "pointer", fontWeight: 600 }}>Salvar</span>
                   <span onClick={() => setEditandoDia(false)} style={{ fontSize: 11, color: T.muted, cursor: "pointer" }}>Cancelar</span>
@@ -1091,8 +1091,8 @@ const Onboarding = ({ setActive }) => {
                 error={attempted[1] ? stepErrors[1].planId : undefined} />
             )}
             <div>
-              <Input label="Dia de pagamento" type="number" min={1} max={30} value={form.diaPagamento}
-                onChange={e => setForm(f => ({ ...f, diaPagamento: e.target.value }))} placeholder="Ex: 10"
+              <Input label="Dia de pagamento" type="text" inputMode="numeric" value={form.diaPagamento}
+                onChange={e => setForm(f => ({ ...f, diaPagamento: e.target.value.replace(/\D/g, "").slice(0, 2) }))} placeholder="Ex: 10"
                 error={attempted[1] ? stepErrors[1].diaPagamento : undefined} />
               <div style={{ fontSize: 11, color: T.muted, marginTop: 5 }}>Dia do mês (01 a 30) em que essa barbearia vence a mensalidade — usado pra marcar "em atraso" em Barbearias.</div>
             </div>
