@@ -2483,12 +2483,6 @@ export default function App() {
               <span style={{ color: T.mutedHi, textTransform: "capitalize" }}>{page}</span>
             </div>
           </div>
-          {!isMobile && (
-            <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-              <Badge color={T.success} small>Sistema operacional</Badge>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.success }} />
-            </div>
-          )}
         </div>
         <div style={{ flex: 1, overflowY: "auto", display: "flex" }}>
           {render()}
