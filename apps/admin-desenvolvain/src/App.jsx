@@ -545,7 +545,7 @@ const Dashboard = ({ setActive }) => {
           value={overview ? String(overview.tenants.total) : "…"}
           sub={overview ? `${overview.tenants.active} ativas · ${overview.tenants.suspended} suspensas` : undefined}
         />
-        <Stat label="MRR (assinaturas ativas)" value={overview ? formatMoney(overview.mrrCents) : "…"} />
+        <Stat label="Receita recorrente mensal" value={overview ? formatMoney(overview.mrrCents) : "…"} />
       </div>
 
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
@@ -2249,7 +2249,7 @@ const Assinaturas = ({ tenantId, setTenantId }) => {
         <Stat label="Ativas" value={overview ? String(overview.activeCount) : "…"} />
         <Stat label="Canceladas" value={overview ? String(overview.cancelledCount) : "…"} accent={T.danger} />
         <Stat label="Sem assinatura" value={overview ? String(overview.noneCount) : "…"} accent={T.warning} />
-        <Stat label="MRR" value={overview ? formatMoney(overview.mrrCents) : "…"} />
+        <Stat label="Receita recorrente mensal" value={overview ? formatMoney(overview.mrrCents) : "…"} />
       </div>
 
       {!tenantId ? (

@@ -67,7 +67,11 @@ export class AdminSubscriptionsService {
         !!t.subscription && t.subscription.status === 'active',
     );
 
-    const mrrCents = active.reduce((sum, t) => sum + (t.subscription.plan.priceCents ?? 0), 0);
+    // MRR não inclui trial — mesmo que o plano trial tenha priceCents > 0 cadastrado,
+    // não é receita recorrente garantida (ainda pode cancelar antes de virar pagante).
+    const mrrCents = active
+      .filter((t) => t.subscription.plan.code !== 'trial')
+      .reduce((sum, t) => sum + (t.subscription.plan.priceCents ?? 0), 0);
     const trialsAtivos = active.filter((t) => t.subscription.plan.code === 'trial').length;
 
     const byPlan = new Map<string, { planCode: string; planName: string; count: number }>();
