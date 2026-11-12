@@ -633,7 +633,7 @@ function Agenda() {
               flexShrink: 0, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
               background: active ? T.gold + "22" : T.card,
               border: `1.5px solid ${active ? T.gold : T.border}`,
-              textAlign: "center", minWidth: 56,
+              textAlign: "center", minWidth: 56, userSelect: "none",
             }}>
               <div style={{ fontSize: 10, color: active ? T.gold : T.muted }}>{WEEKDAY_LABELS[d.getUTCDay()]}</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: active ? T.gold : T.text }}>{d.getUTCDate()}</div>
